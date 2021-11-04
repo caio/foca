@@ -1,0 +1,59 @@
+[package]
+name = "foca"
+version = "0.1.0"
+authors = ["Caio <contact@caio.co>"]
+edition = "2021"
+license = "MPL-2.0"
+description = "Gossip-based cluster membership discovery (SWIM)"
+keywords = ["swim", "gossip", "service-discovery", "memberlist"]
+categories = ["network-programming", "no-std"]
+repository = "https://github.com/caio/foca"
+homepage = "https://github.com/caio/foca"
+
+[package.metadata.docs.rs]
+all-features = true
+
+[features]
+# Will always be empty
+default = []
+
+# Adds compatibility with some types and traits
+std = ["anyhow/std"]
+# Exposes `BincodeCodec` a lean general-purpose std-only codec
+bincode-codec = ["std", "serde", "bincode", "bytes/std"]
+# Exposes `PostcardCodec`, a no_std-friendly codec
+postcard-codec = ["serde", "postcard"]
+
+# For examples/identity_golf.rs
+identity-golf = ["std", "rand/default"]
+# For examples/foca_insecure_udp_agent.rs
+agent = [
+    "std", "postcard-codec", "clap", "rand/default", "tokio",
+    "serde/std", "tracing/default", "tracing-subscriber"
+]
+
+[dependencies]
+rand = { version = "0.8", default-features = false }
+bytes = { version = "1", default-features = false }
+anyhow = { version = "1", default-features = false }
+
+serde = { version = "1", default-features = false, features = ["derive", "alloc"], optional = true }
+bincode = { version = "1", default-features = false, optional = true }
+postcard = { version = "0.7", default-features = false, optional = true }
+tracing = { version = "0.1", default-features = false, features = ["attributes"], optional = true }
+
+# Only used by examples:
+clap = { version = "2", default-features = false, optional = true }
+tokio = { version = "1", default-features = false, features = ["rt", "macros", "sync", "time", "net"], optional = true }
+tracing-subscriber = { version = "0.2", optional = true }
+
+[dev-dependencies]
+rand = { version = "0.8", default-features = false, features = ["small_rng"] }
+
+[[example]]
+name = "identity_golf"
+required-features = ["identity-golf"]
+
+[[example]]
+name = "foca_insecure_udp_agent"
+required-features = ["agent"]
