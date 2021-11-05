@@ -1,9 +1,0 @@
-This is adapted from:
-
-   https://blog.dbrgn.ch/2019/12/24/testing-for-no-std-compatibility/
-
-A little bit more involved because `alloc` is required.
-
-Running:
-
-   $ cargo +nightly rustc -- -C link-arg=-nostartfiles

@@ -170,8 +170,5 @@ Protocol][1]
 Unless explicitly stated otherwise, all work is subject to the terms
 of the Mozilla Public License, version 2.0.
 
-Files inside the `ensure_no_std_alloc/` directory are under the MIT
-license, as their original.
-
 Files inside the `examples/` directory are dedicated to the Public
 Domain.
