@@ -31,6 +31,10 @@ agent = [
     "std", "postcard-codec", "clap", "rand/default", "tokio",
     "serde/std", "tracing/default", "tracing-subscriber"
 ]
+# For examples/broadcasting.rs
+broadcasting = [
+    "std", "rand/default", "serde/std", "bincode-codec", "bincode", "uuid"
+]
 
 [dependencies]
 rand = { version = "0.8", default-features = false }
@@ -46,6 +50,7 @@ tracing = { version = "0.1", default-features = false, features = ["attributes"]
 clap = { version = "2", default-features = false, optional = true }
 tokio = { version = "1", default-features = false, features = ["rt", "macros", "sync", "time", "net"], optional = true }
 tracing-subscriber = { version = "0.2", optional = true }
+uuid = { version = "0.8", features = ["v4", "serde"], optional = true }
 
 [dev-dependencies]
 rand = { version = "0.8", default-features = false, features = ["small_rng"] }
@@ -57,3 +62,7 @@ required-features = ["identity-golf"]
 [[example]]
 name = "foca_insecure_udp_agent"
 required-features = ["agent"]
+
+[[example]]
+name = "broadcasting"
+required-features = ["broadcasting"]
