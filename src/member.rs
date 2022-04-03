@@ -480,12 +480,12 @@ mod tests {
 
         let mut rng = SmallRng::seed_from_u64(0xF0CA);
 
-        for wanted in ordered_ids.iter().cloned() {
+        for wanted in ordered_ids.iter() {
             let got = members
                 .next(&mut rng)
                 .expect("Non-empty set of Alive members should always yield Some()")
                 .id;
-            assert_eq!(wanted, got);
+            assert_eq!(wanted, &got);
         }
 
         // By now we walked through all known live members so
