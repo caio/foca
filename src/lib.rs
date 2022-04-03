@@ -343,7 +343,7 @@ where
     /// Disseminate updates/broadcasts to cluster members.
     ///
     /// This instructs Foca to pick [`Config::num_indirect_probes`]
-    /// random active members and send a `Message::Gossip` containing
+    /// random active members and send a [`Message::Gossip`] containing
     /// cluster updates.
     ///
     /// Intended for more complex scenarios where an implementation wants
