@@ -369,6 +369,16 @@ impl InMemoryRuntime {
         let taken = self.to_schedule.swap_remove(position);
         Some(taken.1)
     }
+
+    pub fn find_scheduling<F>(&self, predicate: F) -> Option<&Timer<ID>>
+    where
+        F: Fn(&Timer<ID>) -> bool,
+    {
+        self.to_schedule
+            .iter()
+            .find(|(timer, _)| predicate(timer))
+            .map(|(timer, _)| timer)
+    }
 }
 
 impl Runtime<ID> for InMemoryRuntime {

@@ -2080,6 +2080,69 @@ mod tests {
         assert!(!updates.is_empty());
     }
 
+    #[test]
+    fn renew_during_probe_shouldnt_cause_errors() {
+        let id = ID::new(1).rejoinable();
+        let mut foca = Foca::new(id, config(), rng(), codec());
+        let mut runtime = InMemoryRuntime::new();
+
+        let updates = [
+            Member::alive(ID::new(2)),
+            Member::alive(ID::new(3)),
+            Member::alive(ID::new(4)),
+        ];
+
+        // Prepare a foca instance with 3 known peers
+        assert_eq!(
+            Ok(()),
+            foca.apply_many(updates.iter().cloned(), &mut runtime)
+        );
+
+        // By now we should've gotten an event to schedule probing
+        let expected_timer = Timer::ProbeRandomMember(foca.timer_token());
+        expect_scheduling!(runtime, expected_timer.clone(), config().probe_period);
+
+        // When it fires (after Config::probe_period normally- directly now)
+        // the probe cycle starts
+        assert_eq!(Ok(()), foca.handle_timer(expected_timer, &mut runtime));
+
+        // Which instructs us to probe a random member
+        let probe_random_member_timer = runtime
+            .find_scheduling(|e| matches!(e, Timer::ProbeRandomMember(_)))
+            .expect("Probe cycle should have started")
+            .clone();
+
+        // Now we're in the middle of a probe cycle. What happens if
+        // we are forced to change identities (either via being declared
+        // down or manually changing ids)?
+        let new_id = id.renew().unwrap();
+        assert_eq!(Ok(()), foca.change_identity(new_id, &mut runtime));
+
+        // In the bug scenario, a member received our new identity
+        // and sent us a message, so foca became connected:
+        //
+        // assert_eq!(Ok(()), foca.apply(Member::alive(new_id), &mut runtime));
+        //
+        // And THEN the ProbeRandomMember event fired, which accepted
+        // the event and made it all the way to `probe_random_member`
+        // that correctly detected that there was still a member being
+        // probed when it shouldn't
+
+        // But the issue was present even before receiving a message
+        // that makes foca go online: Since before the bug fix the
+        // timer token wasn't being updated, the ProbeRandomMember
+        // event was accepted and another trip-wire would fire:
+        // `Error::NotConnected` (right before calling
+        // `probe_random_member`, that would lead to the original
+        // scenario)
+        // So this verifies that Foca now correctly discards the
+        // event instead of throwing an error:
+        assert_eq!(
+            Ok(()),
+            foca.handle_timer(probe_random_member_timer, &mut runtime)
+        );
+    }
+
     // Simple helper to ease testing of the probe cycle
     // Yields:
     //  .0: a foca instance, ID=1, with `num_members` active members
