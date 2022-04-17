@@ -427,14 +427,11 @@ where
     pub fn handle_timer(&mut self, event: Timer<T>, mut runtime: impl Runtime<T>) -> Result<()> {
         match event {
             Timer::SendIndirectProbe { probed_id, token } => {
-                // Internal assumption: token invalidation happens when
-                // going undead, which also clears the probing, so there
-                // is no chance for this return to trigger while we have
-                // a running probe unless something is crafting these
-                // manually
+                // Changing identities in the middle of the probe cycle may
+                // naturally lead to this.
                 if token != self.timer_token {
                     #[cfg(feature = "tracing")]
-                    tracing::warn!(?self.timer_token, token, "Bad timer token");
+                    tracing::debug!(?self.timer_token, token, "Bad timer token");
                     return Ok(());
                 }
 
@@ -772,6 +769,8 @@ where
     fn reset(&mut self) {
         self.connection_state = ConnectionState::Disconnected;
         self.incarnation = Incarnation::default();
+        self.timer_token = self.timer_token.wrapping_add(1);
+        self.probe.clear();
         // XXX It might make sense to `self.updates.clear()` if we're
         //     down for a very long while, but we don't track instants
         //     internally... Exposing a public method to do so and
@@ -2078,6 +2077,17 @@ mod tests {
 
         assert_eq!(Message::Gossip, header.message);
         assert!(!updates.is_empty());
+    }
+
+    #[test]
+    fn changing_identity_resets_timer_token() {
+        let mut foca = Foca::new(ID::new(1), config(), rng(), codec());
+        let orig_timer_token = foca.timer_token();
+
+        let mut runtime = InMemoryRuntime::new();
+        assert_eq!(Ok(()), foca.change_identity(ID::new(2), &mut runtime));
+
+        assert_ne!(orig_timer_token, foca.timer_token());
     }
 
     #[test]
