@@ -130,6 +130,10 @@ pub enum Message<T> {
     /// Deliberate dissemination of cluster updates.
     /// Non-interactive, doesn't expect a reply.
     Gossip,
+
+    /// Deliberate dissemination of custom broadcasts. Broadcast
+    /// messages do not contain cluster updates.
+    Broadcast,
 }
 
 /// ProbeNumber is simply a bookkeeping mechanism to try and prevent
