@@ -366,6 +366,46 @@ where
         Ok(())
     }
 
+    /// Only disseminate custom broadcasts to cluster members
+    ///
+    /// This instructs Foca to pick [`Config::num_indirect_probes`]
+    /// random active members that *pass* the
+    /// [`BroadcastHandler::should_add_broadcast_data`] check. It
+    /// guarantees custom broadcast dissemination if there are
+    /// candidate members available.
+    ///
+    /// No cluster update will be sent with these messages. Intended
+    /// to be used in tandem with a non-default
+    /// `should_add_broadcast_data`.
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(runtime)))]
+    pub fn broadcast(&mut self, mut runtime: impl Runtime<T>) -> Result<()> {
+        if self.custom_broadcast_backlog() == 0 {
+            // Nothing to broadcast
+            return Ok(());
+        }
+
+        self.member_buf.clear();
+        self.members.choose_active_members(
+            self.config.num_indirect_probes.get(),
+            &mut self.member_buf,
+            &mut self.rng,
+            |member| self.broadcast_handler.should_add_broadcast_data(member),
+        );
+
+        while let Some(chosen) = self.member_buf.pop() {
+            self.send_message(chosen.into_identity(), Message::Broadcast, &mut runtime)?;
+
+            // Crafting the message above left the backlog empty,
+            // no need to send more messages since they won't
+            // contain anything
+            if self.custom_broadcast_backlog() == 0 {
+                break;
+            }
+        }
+
+        Ok(())
+    }
+
     /// Leave the cluster by declaring our own identity as down.
     ///
     /// If there are active members, we select a few are selected
@@ -596,7 +636,7 @@ where
         // means the packet is valid. But that doesn't seem like a very
         // good idea...
         self.member_buf.clear();
-        if remaining >= 2 {
+        if remaining >= 2 && header.message != Message::Broadcast {
             let num_updates = data.get_u16();
             for _i in 0..num_updates {
                 self.member_buf.push(
@@ -748,9 +788,8 @@ where
                 }
             }
             Message::Announce => self.send_message(src, Message::Feed, runtime)?,
-            // Nothing to do. Gossip and Feed messages come with cluster
-            // updates only and we've handled them above.
-            Message::Gossip | Message::Feed => {}
+            // Nothing to do. These messages do not expect any reply
+            Message::Gossip | Message::Feed | Message::Broadcast => {}
         };
 
         self.handle_custom_broadcasts(data)
@@ -984,6 +1023,8 @@ where
             Message::Announce => (false, false),
             // Feed packets stuff active members at the tail
             Message::Feed => (true, true),
+            // Broadcast packets stuffs only custom broadcasts
+            Message::Broadcast => (false, false),
             // Every other message stuffs cluster updates
             _ => (true, false),
         };
@@ -2930,7 +2971,6 @@ mod tests {
             "Should have received two new custom broadcasts"
         );
 
-        drop(other_foca);
         drop(data_for_another_foca);
 
         // Now we'll talk to member ID=3, but since our handler
@@ -2976,6 +3016,38 @@ mod tests {
             2,
             isolated_foca.num_members(),
             "But cluster updates should have arrived normally"
+        );
+
+        runtime.clear();
+        // `foca` (ID=1) is presently seeing two members:
+        //  - ID=2, allowed to receive broadcasts
+        //  - ID=3, which never receives broadcasts
+        //  So if we call broadcast()
+        assert_eq!(Ok(()), foca.broadcast(&mut runtime));
+
+        // We NO message to the isolated member
+        assert!(runtime.take_data(isolated_member).is_none());
+
+        // And one Broadcast message to ID=2
+        let broadcast_message = runtime
+            .take_data(other_id)
+            .expect("shoud've sent a message to ID=2");
+
+        let header = codec()
+            .decode_header(&broadcast_message[..])
+            .expect("valid payload");
+
+        assert_eq!(
+            header.message,
+            Message::Broadcast,
+            "broadcast() should trigger Broadcast messages"
+        );
+
+        // And, of course, ID=2 should be able to handle
+        // such message
+        assert_eq!(
+            Ok(()),
+            other_foca.handle_data(&broadcast_message, &mut runtime)
         );
     }
 }

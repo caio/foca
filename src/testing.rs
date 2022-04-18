@@ -184,6 +184,7 @@ impl BadCodec {
             7 => Message::Gossip,
             8 => Message::Announce,
             9 => Message::Feed,
+            10 => Message::Broadcast,
             other => return Err(BadCodecError::BadMessageID(other)),
         };
 
@@ -247,6 +248,9 @@ impl BadCodec {
             }
             Message::Feed => {
                 buf.put_u8(9);
+            }
+            Message::Broadcast => {
+                buf.put_u8(10);
             }
         }
 
