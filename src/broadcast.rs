@@ -10,7 +10,7 @@ use bytes::{Buf, BufMut};
 /// and deciding whether to keep disseminating it for other members
 /// of the cluster (when it's new information) or to discard it (when
 /// its outdated/stale).
-pub trait BroadcastHandler {
+pub trait BroadcastHandler<T> {
     /// Concrete type that will be disseminated to all cluster members.
     ///
     /// It should be able to compare itself against an arbitrary number
@@ -46,6 +46,29 @@ pub trait BroadcastHandler {
     ///
     /// Implementations may assume the data in the buffer is contiguous.
     fn receive_item(&mut self, data: impl Buf) -> Result<Option<Self::Broadcast>, Self::Error>;
+
+    /// Decides whether Foca should add broadcast data to the message
+    /// it's about to send to active member `T`.
+    ///
+    /// Normally when Foca sends a message it always tries to include
+    /// custom broadcasts alongside the information it actually
+    /// cares about; This allows implementations to override this
+    /// logic with something else.
+    ///
+    /// Example: You are running a heterogeneous cluster and some nodes
+    /// are always very busy and you'd rather they never have to deal
+    /// with the extra cpu/bandwidth cost of receiving/sending
+    /// your custom broadcasts.
+    ///
+    /// Returning `true` tells Foca to proceed as it would normally,
+    /// including broadcasts in the messages it sends when it can.
+    ///
+    /// Returning `false` tells Foca to not include such broadcasts
+    /// in the message. It does *not* prevent the message from being
+    /// sent, just keeps Foca from attaching extra data to them.
+    fn should_add_broadcast_data(&self, _member: &T) -> bool {
+        true
+    }
 }
 
 /// A type that's able to look at another and decide wether it's
