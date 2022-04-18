@@ -104,7 +104,7 @@ type Result<T> = core::result::Result<T, Error>;
 /// operation inside out (think callbacks, or an out parameter like
 /// `void* out`). This allows Foca to avoid deciding anything related
 /// to how it interacts with the operating system.
-pub struct Foca<T, C, RNG, B: BroadcastHandler> {
+pub struct Foca<T, C, RNG, B: BroadcastHandler<T>> {
     identity: T,
     codec: C,
     rng: RNG,
@@ -152,7 +152,7 @@ where
 }
 
 #[cfg(feature = "tracing")]
-impl<T: Identity, C, RNG, B: BroadcastHandler> fmt::Debug for Foca<T, C, RNG, B> {
+impl<T: Identity, C, RNG, B: BroadcastHandler<T>> fmt::Debug for Foca<T, C, RNG, B> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Assuming that when tracing comes into play the cluster is actually
         // uniform. Meaning: everything is configured the same, including
@@ -172,7 +172,7 @@ where
     T: Identity,
     C: Codec<T>,
     RNG: Rng,
-    B: BroadcastHandler,
+    B: BroadcastHandler<T>,
 {
     /// Initialize a new Foca instance.
     pub fn with_custom_broadcast(
@@ -1024,7 +1024,16 @@ where
 
             // Seek back and write the correct number of items added
             buf.get_mut()[tally_position..].as_mut().put_u16(num_items);
+        }
 
+        let add_custom_broadcast = buf.has_remaining_mut()
+            // Every message but Announce includes custom broadcasts by
+            // default
+            && !matches!(header.message, Message::Announce)
+            // Unless the broadcast handler says no
+            && self.broadcast_handler.should_add_broadcast_data(&dst);
+
+        if add_custom_broadcast {
             // Fill the remaining space in the buffer with custom
             // broadcasts, if any
             self.custom_broadcasts.fill(&mut buf, usize::MAX);
@@ -1170,7 +1179,7 @@ impl fmt::Display for BroadcastsDisabledError {
 #[cfg(feature = "std")]
 impl std::error::Error for BroadcastsDisabledError {}
 
-impl BroadcastHandler for NoCustomBroadcast {
+impl<T> BroadcastHandler<T> for NoCustomBroadcast {
     type Broadcast = &'static [u8];
     type Error = BroadcastsDisabledError;
 
@@ -1207,7 +1216,7 @@ where
     T: Identity,
     C: Codec<T>,
     RNG: rand::Rng,
-    B: BroadcastHandler,
+    B: BroadcastHandler<T>,
 {
     pub fn incarnation(&self) -> Incarnation {
         self.incarnation
@@ -2805,7 +2814,7 @@ mod tests {
         use alloc::collections::BTreeMap;
         struct Handler(BTreeMap<u64, u16>);
 
-        impl BroadcastHandler for Handler {
+        impl BroadcastHandler<ID> for Handler {
             type Broadcast = VersionedKey;
 
             type Error = &'static str;
@@ -2830,6 +2839,12 @@ mod tests {
                 } else {
                     Ok(None)
                 }
+            }
+
+            fn should_add_broadcast_data(&self, member: &ID) -> bool {
+                // never broadcast to member ID=3
+                let blacklisted = ID::new(3);
+                !blacklisted.eq(member)
             }
         }
 
@@ -2913,6 +2928,54 @@ mod tests {
             2,
             other_foca.custom_broadcast_backlog(),
             "Should have received two new custom broadcasts"
+        );
+
+        drop(other_foca);
+        drop(data_for_another_foca);
+
+        // Now we'll talk to member ID=3, but since our handler
+        // has a custom implementation for `should_add_broadcast_data`
+        // that yields false for this identity, we want
+        // no _broadcast_ data to be sent to them, everything else
+        // should flow normally.
+        let isolated_member = ID::new(3);
+        let mut isolated_foca = Foca::with_custom_broadcast(
+            isolated_member,
+            config(),
+            rng(),
+            codec(),
+            Handler(BTreeMap::new()),
+        );
+
+        runtime.clear();
+        // Add the isolated member to the cluster
+        assert_eq!(
+            Ok(()),
+            foca.apply(Member::alive(isolated_member), &mut runtime)
+        );
+
+        // Since there are just a few members, calling gossip
+        // will definitely choose this member
+        assert_eq!(Ok(()), foca.gossip(&mut runtime));
+        let data_for_isolated_member = runtime
+            .take_data(isolated_member)
+            .expect("config has num_indirect_probes > 1");
+
+        assert_eq!(
+            Ok(()),
+            isolated_foca.handle_data(&data_for_isolated_member, &mut runtime)
+        );
+
+        assert_eq!(
+            0,
+            isolated_foca.custom_broadcast_backlog(),
+            "Should not have received any custom broadcast"
+        );
+
+        assert_eq!(
+            2,
+            isolated_foca.num_members(),
+            "But cluster updates should have arrived normally"
         );
     }
 }

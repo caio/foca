@@ -134,7 +134,7 @@ impl Handler {
     }
 }
 
-impl BroadcastHandler for Handler {
+impl<T> BroadcastHandler<T> for Handler {
     type Broadcast = Broadcast;
     type Error = String;
 
