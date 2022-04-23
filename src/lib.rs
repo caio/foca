@@ -292,7 +292,6 @@ where
     /// choose to unify their cluster knowledge (say: a streaming
     /// join protocol or a periodic sync) and use [`Foca::apply_many`]
     /// as a way to feed Foca this new (external) knowledge.
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(updates, runtime)))]
     pub fn apply_many(
         &mut self,
         updates: impl Iterator<Item = Member<T>>,
@@ -441,7 +440,9 @@ where
         //       it forces everything to know the exact concrete type of
         //       the broadcast. So... maybe revisit this decision later?
         #[cfg(feature = "tracing")]
-        tracing::info!(len = data.len());
+        let span = tracing::span!(tracing::Level::DEBUG, "add_broadcast", len = data.len(),);
+        #[cfg(feature = "tracing")]
+        let _guard = span.enter();
 
         // Not considering the whole header
         if data.len() > self.config.max_packet_size.get() {
@@ -454,6 +455,8 @@ where
             .map_err(anyhow::Error::msg)
             .map_err(Error::CustomBroadcast)?
         {
+            #[cfg(feature = "tracing")]
+            tracing::debug!("new item received");
             self.custom_broadcasts.add_or_replace(broadcast);
         }
 
@@ -465,13 +468,23 @@ where
     /// See [`Runtime::submit_after`].
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(runtime)))]
     pub fn handle_timer(&mut self, event: Timer<T>, mut runtime: impl Runtime<T>) -> Result<()> {
+        #[cfg(feature = "tracing")]
+        let span = tracing::span!(
+            tracing::Level::DEBUG,
+            "handle_timer",
+            self.timer_token,
+            ?event,
+        );
+        #[cfg(feature = "tracing")]
+        let _guard = span.enter();
+
         match event {
             Timer::SendIndirectProbe { probed_id, token } => {
                 // Changing identities in the middle of the probe cycle may
                 // naturally lead to this.
                 if token != self.timer_token {
                     #[cfg(feature = "tracing")]
-                    tracing::debug!(?self.timer_token, token, "Bad timer token");
+                    tracing::debug!("Invalid timer token");
                     return Ok(());
                 }
 
@@ -483,7 +496,7 @@ where
 
                 if !self.probe.is_probing(&probed_id) {
                     #[cfg(feature = "tracing")]
-                    tracing::warn!(?probed_id, "Member not being probed");
+                    tracing::warn!("Member not being probed");
                     return Ok(());
                 }
 
@@ -499,6 +512,9 @@ where
                     &mut self.rng,
                     |candidate| Some(candidate) != self.probe.target(),
                 );
+
+                #[cfg(feature = "tracing")]
+                tracing::debug!("Indirect Probe Cycle started");
 
                 while let Some(chosen) = self.member_buf.pop() {
                     let indirect = chosen.into_identity();
@@ -539,7 +555,7 @@ where
                         self.adjust_connection_state(runtime);
                     } else {
                         #[cfg(feature = "tracing")]
-                        tracing::warn!(member = ?as_down.id(), "Member not found");
+                        tracing::warn!("Member not found");
                     }
                 }
 
@@ -550,12 +566,12 @@ where
                     not(feature = "tracing"),
                     allow(unused_variables, clippy::if_same_then_else)
                 )]
-                if let Some(removed) = self.members.remove_if_down(&down) {
+                if let Some(_removed) = self.members.remove_if_down(&down) {
                     #[cfg(feature = "tracing")]
-                    tracing::trace!(?removed);
+                    tracing::trace!("Member removed");
                 } else {
                     #[cfg(feature = "tracing")]
-                    tracing::trace!(?down, "Member not found / not down");
+                    tracing::trace!("Member not found / not down");
                 }
 
                 Ok(())
@@ -604,7 +620,15 @@ where
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(runtime, data)))]
     pub fn handle_data(&mut self, mut data: &[u8], mut runtime: impl Runtime<T>) -> Result<()> {
         #[cfg(feature = "tracing")]
-        tracing::debug!(len = data.len());
+        let span = tracing::span!(
+            tracing::Level::DEBUG,
+            "handle_data",
+            data_len = data.len(),
+            src = tracing::field::Empty,
+            message = tracing::field::Empty,
+        );
+        #[cfg(feature = "tracing")]
+        let _guard = span.enter();
 
         if data.remaining() > self.config.max_packet_size.get() {
             return Err(Error::DataTooBig);
@@ -617,7 +641,9 @@ where
             .map_err(Error::Decode)?;
 
         #[cfg(feature = "tracing")]
-        tracing::info!(?header.src, ?header.message);
+        span.record("src", &tracing::field::debug(&header.src));
+        #[cfg(feature = "tracing")]
+        span.record("message", &tracing::field::debug(&header.message));
 
         let remaining = data.remaining();
         // A single trailing byte or a Announce payload with _any_
@@ -866,8 +892,10 @@ where
 
         if let Some(member) = self.members.next(&mut self.rng) {
             let member_id = member.id().clone();
-
             let probe_number = self.probe.start(member.clone());
+
+            #[cfg(feature = "tracing")]
+            tracing::debug!("Probe start");
 
             self.send_message(member_id.clone(), Message::Ping(probe_number), &mut runtime)?;
 
@@ -956,6 +984,9 @@ where
         debug_assert_eq!(0, self.num_members());
         self.connection_state = ConnectionState::Disconnected;
 
+        #[cfg(feature = "tracing")]
+        tracing::debug!("now idle");
+
         // Ignore every timer event we sent up until this point.
         // This is to stop the probe cycle and prevent members from
         // being switched the Down state since we have little
@@ -967,6 +998,9 @@ where
 
     fn become_undead(&mut self, mut runtime: impl Runtime<T>) {
         self.connection_state = ConnectionState::Undead;
+
+        #[cfg(feature = "tracing")]
+        tracing::debug!("now defunct");
 
         // We're down, whatever we find out by probing is unreliable
         self.probe.clear();
@@ -981,6 +1015,9 @@ where
     fn become_connected(&mut self, mut runtime: impl Runtime<T>) {
         debug_assert_ne!(0, self.num_members());
         self.connection_state = ConnectionState::Connected;
+
+        #[cfg(feature = "tracing")]
+        tracing::debug!("now active");
 
         // We have at least one active member, so we can start
         // probing
@@ -999,7 +1036,17 @@ where
         mut runtime: impl Runtime<T>,
     ) -> Result<()> {
         #[cfg(feature = "tracing")]
-        tracing::debug!(?dst, ?message, "send_message");
+        let span = tracing::span!(
+            tracing::Level::DEBUG,
+            "send_message",
+            ?dst,
+            ?message,
+            num_updates = tracing::field::Empty,
+            num_broadcasts = tracing::field::Empty,
+            len = tracing::field::Empty,
+        );
+        #[cfg(feature = "tracing")]
+        let _guard = span.enter();
 
         let header = Header {
             src: self.identity.clone(),
@@ -1065,6 +1112,8 @@ where
 
             // Seek back and write the correct number of items added
             buf.get_mut()[tally_position..].as_mut().put_u16(num_items);
+            #[cfg(feature = "tracing")]
+            span.record("num_updates", &num_items);
         }
 
         let add_custom_broadcast = buf.has_remaining_mut()
@@ -1077,10 +1126,20 @@ where
         if add_custom_broadcast {
             // Fill the remaining space in the buffer with custom
             // broadcasts, if any
-            self.custom_broadcasts.fill(&mut buf, usize::MAX);
+            #[cfg_attr(not(feature = "tracing"), allow(unused_variables))]
+            let num_broadcasts = self.custom_broadcasts.fill(&mut buf, usize::MAX);
+            #[cfg(feature = "tracing")]
+            span.record("num_broadcasts", &num_broadcasts);
         }
 
-        runtime.send_to(dst, &buf.into_inner());
+        let data = buf.into_inner();
+        #[cfg(feature = "tracing")]
+        span.record("len", &data.len());
+
+        #[cfg(feature = "tracing")]
+        tracing::debug!("Message sent");
+
+        runtime.send_to(dst, &data);
         Ok(())
     }
 
