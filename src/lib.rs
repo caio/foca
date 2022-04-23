@@ -183,7 +183,6 @@ where
         broadcast_handler: B,
     ) -> Self {
         let max_indirect_probes = config.num_indirect_probes.get();
-        let max_tx = config.max_transmissions.get().into();
         let max_bytes = config.max_packet_size.get();
         Self {
             identity,
@@ -196,9 +195,9 @@ where
             probe: Probe::new(Vec::with_capacity(max_indirect_probes)),
             member_buf: Vec::new(),
             connection_state: ConnectionState::Disconnected,
-            updates: Broadcasts::new(max_tx),
+            updates: Broadcasts::new(),
             send_buf: BytesMut::with_capacity(max_bytes),
-            custom_broadcasts: Broadcasts::new(max_tx),
+            custom_broadcasts: Broadcasts::new(),
             updates_buf: BytesMut::new(),
             broadcast_handler,
         }
@@ -260,10 +259,13 @@ where
             // we'll declare it ourselves
             if !previous_is_down {
                 let data = self.serialize_member(Member::down(previous_id.clone()))?;
-                self.updates.add_or_replace(ClusterUpdate {
-                    member_id: previous_id,
-                    data,
-                });
+                self.updates.add_or_replace(
+                    ClusterUpdate {
+                        member_id: previous_id,
+                        data,
+                    },
+                    self.config.max_transmissions.get().into(),
+                );
             }
 
             self.gossip(runtime)?;
@@ -415,10 +417,13 @@ where
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(runtime)))]
     pub fn leave_cluster(mut self, mut runtime: impl Runtime<T>) -> Result<()> {
         let data = self.serialize_member(Member::down(self.identity().clone()))?;
-        self.updates.add_or_replace(ClusterUpdate {
-            member_id: self.identity().clone(),
-            data,
-        });
+        self.updates.add_or_replace(
+            ClusterUpdate {
+                member_id: self.identity().clone(),
+                data,
+            },
+            self.config.max_transmissions.get().into(),
+        );
 
         self.gossip(&mut runtime)?;
 
@@ -456,7 +461,8 @@ where
         {
             #[cfg(feature = "tracing")]
             tracing::debug!("new item received");
-            self.custom_broadcasts.add_or_replace(broadcast);
+            self.custom_broadcasts
+                .add_or_replace(broadcast, self.config.max_transmissions.get().into());
         }
 
         Ok(())
@@ -938,10 +944,13 @@ where
         if summary.apply_successful {
             // Cluster state changed, start broadcasting it
             let data = self.serialize_member(update)?;
-            self.updates.add_or_replace(ClusterUpdate {
-                member_id: id.clone(),
-                data,
-            });
+            self.updates.add_or_replace(
+                ClusterUpdate {
+                    member_id: id.clone(),
+                    data,
+                },
+                self.config.max_transmissions.get().into(),
+            );
 
             // Down is a terminal state, so set up a handler for removing
             // the member so that it may rejoin later
@@ -969,7 +978,8 @@ where
                 .map_err(anyhow::Error::msg)
                 .map_err(Error::CustomBroadcast)?
             {
-                self.custom_broadcasts.add_or_replace(broadcast);
+                self.custom_broadcasts
+                    .add_or_replace(broadcast, self.config.max_transmissions.get().into());
             }
         }
 
