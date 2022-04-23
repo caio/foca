@@ -99,7 +99,6 @@ impl<'a> Invalidates for &'a [u8] {
 }
 
 pub(crate) struct Broadcasts<V> {
-    max_tx: usize,
     storage: Vec<Entry<V>>,
 }
 
@@ -107,10 +106,9 @@ impl<T> Broadcasts<T>
 where
     T: Invalidates + AsRef<[u8]>,
 {
-    pub fn new(max_tx: usize) -> Self {
+    pub fn new() -> Self {
         Self {
             storage: Vec::new(),
-            max_tx,
         }
     }
 
@@ -118,9 +116,9 @@ where
         self.storage.len()
     }
 
-    pub fn add_or_replace(&mut self, value: T) {
+    pub fn add_or_replace(&mut self, value: T, max_tx: usize) {
         let new_node = Entry {
-            remaining_tx: self.max_tx,
+            remaining_tx: max_tx,
             value,
         };
 
@@ -283,15 +281,15 @@ mod tests {
     #[test]
     fn piggyback_behaviour() {
         let max_tx = 5;
-        let mut piggyback = Broadcasts::new(max_tx);
+        let mut piggyback = Broadcasts::new();
 
         assert!(piggyback.is_empty(), "Piggyback starts empty");
 
-        piggyback.add_or_replace(TwoByteKey::new(b"AAabc"));
+        piggyback.add_or_replace(TwoByteKey::new(b"AAabc"), max_tx);
 
         assert_eq!(1, piggyback.len());
 
-        piggyback.add_or_replace(TwoByteKey::new(b"AAcba"));
+        piggyback.add_or_replace(TwoByteKey::new(b"AAcba"), max_tx);
 
         assert_eq!(
             1,
@@ -320,8 +318,8 @@ mod tests {
 
     #[test]
     fn fill_does_nothing_if_buffer_full() {
-        let mut piggyback = Broadcasts::new(1);
-        piggyback.add_or_replace(TwoByteKey::new(b"a super long value"));
+        let mut piggyback = Broadcasts::new();
+        piggyback.add_or_replace(TwoByteKey::new(b"a super long value"), 1);
 
         let buf = bytes::BytesMut::new();
         let mut limited = buf.limit(5);
@@ -335,26 +333,52 @@ mod tests {
 
     #[test]
     fn piggyback_consumes_largest_first() {
-        let mut piggyback = Broadcasts::new(10);
+        let max_tx = 10;
+        let mut piggyback = Broadcasts::new();
 
-        piggyback.add_or_replace(TwoByteKey::new("00hi".as_bytes()));
-        piggyback.add_or_replace(TwoByteKey::new("01hello".as_bytes()));
-        piggyback.add_or_replace(TwoByteKey::new("02hey".as_bytes()));
+        piggyback.add_or_replace(TwoByteKey::new(b"00hi"), max_tx);
+        piggyback.add_or_replace(TwoByteKey::new(b"01hello"), max_tx);
+        piggyback.add_or_replace(TwoByteKey::new(b"02hey"), max_tx);
 
         let mut buf = Vec::new();
         let num_items = piggyback.fill(&mut buf, usize::MAX);
 
         assert_eq!(3, num_items);
-        assert_eq!("01hello02hey00hi".as_bytes(), &buf[..]);
+        assert_eq!(b"01hello02hey00hi", &buf[..]);
+    }
+
+    #[test]
+    fn highest_max_tx_is_consumed_first() {
+        let mut piggyback = Broadcasts::new();
+
+        // 3 items, same byte size, distinct max_tx
+        piggyback.add_or_replace(TwoByteKey::new(b"100"), 1);
+        piggyback.add_or_replace(TwoByteKey::new(b"200"), 2);
+        piggyback.add_or_replace(TwoByteKey::new(b"300"), 3);
+
+        let mut buf = Vec::new();
+        piggyback.fill(&mut buf, usize::MAX);
+        assert_eq!(b"300200100", &buf[..]);
+
+        buf.clear();
+        piggyback.fill(&mut buf, usize::MAX);
+        assert_eq!(b"300200", &buf[..]);
+
+        buf.clear();
+        piggyback.fill(&mut buf, usize::MAX);
+        assert_eq!(b"300", &buf[..]);
+
+        assert_eq!(0, piggyback.len());
     }
 
     #[test]
     fn piggyback_respects_limit() {
-        let mut piggyback = Broadcasts::new(10);
+        let max_tx = 10;
+        let mut piggyback = Broadcasts::new();
 
-        piggyback.add_or_replace(TwoByteKey::new(b"foo"));
-        piggyback.add_or_replace(TwoByteKey::new(b"bar"));
-        piggyback.add_or_replace(TwoByteKey::new(b"baz"));
+        piggyback.add_or_replace(TwoByteKey::new(b"foo"), max_tx);
+        piggyback.add_or_replace(TwoByteKey::new(b"bar"), max_tx);
+        piggyback.add_or_replace(TwoByteKey::new(b"baz"), max_tx);
 
         let mut buf = Vec::new();
         let num_items = piggyback.fill(&mut buf, 0);
