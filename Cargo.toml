@@ -24,18 +24,6 @@ bincode-codec = ["std", "serde", "bincode", "bytes/std"]
 # Exposes `PostcardCodec`, a no_std-friendly codec
 postcard-codec = ["serde", "postcard"]
 
-# For examples/identity_golf.rs
-identity-golf = ["std", "rand/default"]
-# For examples/foca_insecure_udp_agent.rs
-agent = [
-    "std", "postcard-codec", "clap", "rand/default", "tokio",
-    "serde/std", "tracing/default", "tracing-subscriber"
-]
-# For examples/broadcasting.rs
-broadcasting = [
-    "std", "rand/default", "serde/std", "bincode-codec", "bincode", "uuid"
-]
-
 [dependencies]
 rand = { version = "0.8", default-features = false }
 bytes = { version = "1", default-features = false }
@@ -46,23 +34,22 @@ bincode = { version = "1", default-features = false, optional = true }
 postcard = { version = "0.7", default-features = false, optional = true }
 tracing = { version = "0.1", default-features = false, features = ["attributes"], optional = true }
 
-# Only used by examples:
-clap = { version = "2", default-features = false, optional = true }
-tokio = { version = "1", default-features = false, features = ["rt", "macros", "sync", "time", "net"], optional = true }
-tracing-subscriber = { version = "0.2", optional = true }
-uuid = { version = "0.8", features = ["v4", "serde"], optional = true }
-
-[dev-dependencies]
-rand = { version = "0.8", default-features = false, features = ["small_rng"] }
-
 [[example]]
 name = "identity_golf"
-required-features = ["identity-golf"]
+required-features = ["std"]
 
 [[example]]
 name = "foca_insecure_udp_agent"
-required-features = ["agent"]
+required-features = ["std", "tracing", "postcard-codec"]
 
 [[example]]
 name = "broadcasting"
-required-features = ["broadcasting"]
+required-features = ["bincode-codec"]
+
+[dev-dependencies]
+clap = { version = "2", default-features = false }
+tokio = { version = "1", default-features = false, features = ["rt", "macros", "sync", "time", "net"] }
+tracing-subscriber = { version = "0.2" }
+uuid = { version = "0.8", features = ["v4", "serde"] }
+rand = { version = "0.8", features = ["small_rng"] }
+serde = { version = "1", features = ["derive"] }

@@ -39,7 +39,7 @@ showcases how a simple tokio-based agent could look like and lets
 you actually run and see Foca swimming.
 
 ~~~
-$ cargo run --features agent --example foca_insecure_udp_agent -- --help
+$ cargo run --features std,tracing,postcard-codec --example foca_insecure_udp_agent -- --help
 foca_insecure_udp_agent 
 
 USAGE:
@@ -84,11 +84,6 @@ Every feature is optional. The `default` set will always be empty.
   that uses [bincode][] under the hood.
 * `postcard-codec`: Provides `PostcardCodec` a serde-based, `no_std`
   friendly codec that uses [postcard][] under the hood.
-
-Only for examples:
-
-* `identity-golf`: For `./examples/identity_golf.rs`
-* `agent`: For `./examples/foca_insecure_udp_agent.rs`
 
 
 # Notes
