@@ -113,3 +113,119 @@ impl Config {
         }
     }
 }
+
+#[cfg(feature = "std")]
+use core::num::NonZeroU32;
+
+#[cfg(feature = "std")]
+impl Config {
+    /// Generate a configuration for a LAN cluster given an expected
+    /// total number of active members.
+    ///
+    /// The `cluster_size` parameter is used to define how many times updates
+    /// are disseminated ([`Config::max_transmissions`]) and how long Foca
+    /// will wait before declaring a suspected member as down
+    /// ([`Config::suspect_to_down_after`]).
+    ///
+    /// Settings derived from [memberlist's DefaultLanConfig][dlc].
+    ///
+    /// [dlc]: https://pkg.go.dev/github.com/hashicorp/memberlist#DefaultLANConfig
+    pub fn new_lan(cluster_size: NonZeroU32) -> Self {
+        let period = Duration::from_secs(1);
+
+        Self {
+            probe_period: period,
+            probe_rtt: Duration::from_millis(500),
+            num_indirect_probes: NonZeroUsize::new(3).unwrap(),
+
+            max_transmissions: Self::compute_max_tx(cluster_size),
+
+            suspect_to_down_after: Self::suspicion_duration(cluster_size, period, 4.0),
+            remove_down_after: Duration::from_secs(15),
+
+            max_packet_size: NonZeroUsize::new(1400).unwrap(),
+        }
+    }
+
+    /// Generate a configuration for a WAN cluster given an expected
+    /// total number of active members.
+    ///
+    /// Settings derived from [memberlist's DefaultWanConfig][dwc].
+    ///
+    /// [dwc]: https://pkg.go.dev/github.com/hashicorp/memberlist#DefaultWANConfig
+    ///
+    /// See [`Config::new_lan`].
+    pub fn new_wan(cluster_size: NonZeroU32) -> Self {
+        let period = Duration::from_secs(5);
+
+        Self {
+            probe_period: period,
+            probe_rtt: Duration::from_secs(3),
+            num_indirect_probes: NonZeroUsize::new(3).unwrap(),
+
+            max_transmissions: Self::compute_max_tx(cluster_size),
+
+            suspect_to_down_after: Self::suspicion_duration(cluster_size, period, 6.0),
+            remove_down_after: Duration::from_secs(15),
+
+            max_packet_size: NonZeroUsize::new(1400).unwrap(),
+        }
+    }
+
+    fn compute_max_tx(cluster_size: NonZeroU32) -> NonZeroU8 {
+        let multiplier = 4.0f64;
+        let max_tx = f64::from(cluster_size.get().saturating_add(1)).log10() * multiplier;
+        // XXX over-zealous: `multiplier` is not exposed; 4.0 guarantees it doesn't end up here
+        if max_tx <= 1.0 {
+            NonZeroU8::new(1).unwrap()
+        } else if max_tx >= 255.0 {
+            NonZeroU8::new(core::u8::MAX).unwrap()
+        } else {
+            NonZeroU8::new(max_tx as u8).expect("f64 ]1,255[ as u8 is non-zero")
+        }
+    }
+
+    fn suspicion_duration(
+        cluster_size: NonZeroU32,
+        probe_period: Duration,
+        multiplier: f64,
+    ) -> Duration {
+        let secs = f64::max(1.0, f64::from(cluster_size.get()).log10())
+            * multiplier
+            * probe_period.as_secs_f64();
+
+        // XXX `Duration::from_secs_f64` is panicky, but:
+        //  - multiplier is either 4 or 6
+        //  - probe_period is either 1 or 5 secs
+        // So we know `secs` is finite, greater than zero and won't overflow
+        Duration::from_secs_f64(secs)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    #[test]
+    #[cfg(feature = "std")]
+    fn suspicion_scales_slowly() {
+        use super::*;
+
+        let probe_period = Duration::from_secs(1);
+        let mult = 4.0;
+
+        assert_eq!(
+            Duration::from_secs(4),
+            Config::suspicion_duration(NonZeroU32::new(5).unwrap(), probe_period, mult)
+        );
+
+        assert_eq!(
+            Duration::from_secs(4),
+            Config::suspicion_duration(NonZeroU32::new(10).unwrap(), probe_period, mult)
+        );
+
+        assert_eq!(
+            Duration::from_secs(8),
+            Config::suspicion_duration(NonZeroU32::new(100).unwrap(), probe_period, mult)
+        );
+    }
+}
