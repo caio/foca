@@ -70,6 +70,13 @@ pub enum Error {
     ///
     /// Doesn't affect Foca's state.
     CustomBroadcast(anyhow::Error),
+
+    /// Configuration change not allowed.
+    ///
+    /// Doesn't affact Foca's state.
+    ///
+    /// See [`crate::Foca::set_config`].
+    InvalidConfig,
 }
 
 impl PartialEq for Error {
@@ -92,6 +99,7 @@ impl PartialEq for Error {
             (Error::DataFromOurselves, Error::DataFromOurselves) => true,
             (Error::IndirectForOurselves, Error::IndirectForOurselves) => true,
             (Error::MalformedPacket, Error::MalformedPacket) => true,
+            (Error::InvalidConfig, Error::InvalidConfig) => true,
 
             // Instead of a catch-all here, we explicitly enumerate our variants
             // so that when/if new errors are added we don't silently introduce
@@ -107,6 +115,7 @@ impl PartialEq for Error {
             (Error::DataFromOurselves, _) => false,
             (Error::IndirectForOurselves, _) => false,
             (Error::MalformedPacket, _) => false,
+            (Error::InvalidConfig, _) => false,
         }
     }
 }
@@ -137,6 +146,7 @@ impl fmt::Display for Error {
             Error::Encode(err) => err.fmt(formatter),
             Error::Decode(err) => err.fmt(formatter),
             Error::CustomBroadcast(err) => err.fmt(formatter),
+            Error::InvalidConfig => formatter.write_str("Invalid configuration"),
         }
     }
 }
