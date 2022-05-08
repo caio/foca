@@ -616,6 +616,29 @@ where
         self.custom_broadcasts.len()
     }
 
+    /// Replaces the current configuration with a new one.
+    ///
+    /// Most of the time a static configuration is more than enough, but
+    /// for use-cases where the cluster size can drastically change during
+    /// normal operations, changing the configuration parameters is a
+    /// nicer alternative to recreating the Foca instance.
+    ///
+    /// Presently, attempting to change [`Config::probe_period`] or
+    /// [`Config::probe_rtt`] results in [`Error::InvalidConfig`]; For
+    /// such cases it's recommended to recreate your Foca instance. When
+    /// an error occurrs, every configuration parameter remains
+    /// unchanged.
+    pub fn set_config(&mut self, config: Config) -> Result<()> {
+        if self.config.probe_period != config.probe_period
+            || self.config.probe_rtt != config.probe_rtt
+        {
+            Err(Error::InvalidConfig)
+        } else {
+            self.config = config;
+            Ok(())
+        }
+    }
+
     /// Handle data received from the network.
     ///
     /// Data larger than the configured limit will be rejected. Errors are
@@ -1429,6 +1452,31 @@ mod tests {
         );
         assert_eq!(Ok(()), foca.change_identity(ID::new(43), &mut runtime));
         assert_eq!(&ID::new(43), foca.identity());
+    }
+
+    #[test]
+    fn cant_change_config_probe_timers() {
+        let mut foca = Foca::new(ID::new(1), config(), rng(), codec());
+
+        let mut bad_config = config();
+        bad_config.probe_rtt += Duration::from_millis(1);
+
+        assert_eq!(
+            Err(Error::InvalidConfig),
+            foca.set_config(bad_config),
+            "must not be able to change probe_rtt"
+        );
+
+        let mut bad_config = config();
+        bad_config.probe_period -= Duration::from_secs(1);
+
+        assert_eq!(
+            Err(Error::InvalidConfig),
+            foca.set_config(bad_config),
+            "must not be able to change probe_period"
+        );
+
+        assert_eq!(Ok(()), foca.set_config(config()));
     }
 
     #[test]
