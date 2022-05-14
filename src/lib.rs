@@ -432,7 +432,6 @@ where
     /// Register some data to be broadcast along with Foca messages.
     ///
     /// Calls into this instance's BroadcastHandler and reacts accordingly.
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(data)))]
     pub fn add_broadcast(&mut self, data: &[u8]) -> Result<()> {
         // NOTE: Receiving B::Broadcast instead of a byte slice would make it
         //       look more convenient, however it gets in the way when
@@ -466,7 +465,6 @@ where
     /// React to a previously scheduled timer event.
     ///
     /// See [`Runtime::submit_after`].
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(runtime)))]
     pub fn handle_timer(&mut self, event: Timer<T>, mut runtime: impl Runtime<T>) -> Result<()> {
         #[cfg(feature = "tracing")]
         let span = tracing::span!(
@@ -617,7 +615,6 @@ where
     /// Data larger than the configured limit will be rejected. Errors are
     /// expected if you're receiving arbitrary data (which very likely if
     /// you are listening to a socket address).
-    #[cfg_attr(feature = "tracing", tracing::instrument(skip(runtime, data)))]
     pub fn handle_data(&mut self, mut data: &[u8], mut runtime: impl Runtime<T>) -> Result<()> {
         #[cfg(feature = "tracing")]
         let span = tracing::span!(
