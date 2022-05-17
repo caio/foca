@@ -46,9 +46,9 @@ pub trait Identity: Clone + Eq + fmt::Debug {
     ///
     /// The [`Self::has_same_prefix`] method is how we teach Foca to
     /// relax this restriction: Upon receiving an Announce message it
-    /// will call `current_id.has_same_prefix(sender_id)` and if it
-    /// yields `true` the message will be accepted and the new member
-    /// will be allowed to join the cluster.
+    /// will call `current_id.has_same_prefix(dst)` and if it yields
+    /// `true` the message will be accepted and the new member will
+    /// be allowed to join the cluster.
     fn has_same_prefix(&self, other: &Self) -> bool;
 }
 
