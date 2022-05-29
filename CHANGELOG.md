@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.3.1 - 2022-05-29
+
+- Configuration can now be changed at runtime via `Foca::set_config`
+- Added `Config::new_wan` and `Config::new_lan` helpers to generate a
+  good enough configuration based on a given cluster size (requires the
+  `std` feature)
+- Traces (from using the `tracing` feature) are a lot less noisy
+
+## v0.3.0 - 2022-05-29
+
+- **Yanked**, released accidentally
+
 ## v0.2.0 - 2022-04-18
 
 - **BREAKING** `BroadcastHandler` now takes a generic parameter:
