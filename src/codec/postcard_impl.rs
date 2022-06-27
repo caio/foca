@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 use bytes::{Buf, BufMut};
-use postcard::flavors::SerFlavor;
+use postcard::ser_flavors::Flavor as SerFlavor;
 
 use crate::{Codec, Header, Member};
 
@@ -52,25 +52,25 @@ struct WrappedBuf<B>(B);
 impl<B: BufMut> SerFlavor for WrappedBuf<B> {
     type Output = ();
 
-    fn try_push(&mut self, data: u8) -> Result<(), ()> {
+    fn try_push(&mut self, data: u8) -> postcard::Result<()> {
         if self.0.has_remaining_mut() {
             self.0.put_u8(data);
             Ok(())
         } else {
-            Err(())
+            Err(postcard::Error::SerializeBufferFull)
         }
     }
 
-    fn release(self) -> Result<Self::Output, ()> {
+    fn finalize(self) -> postcard::Result<Self::Output> {
         Ok(())
     }
 
-    fn try_extend(&mut self, data: &[u8]) -> Result<(), ()> {
+    fn try_extend(&mut self, data: &[u8]) -> postcard::Result<Self::Output> {
         if self.0.remaining_mut() >= data.len() {
             self.0.put_slice(data);
             Ok(())
         } else {
-            Err(())
+            Err(postcard::Error::SerializeBufferFull)
         }
     }
 }
