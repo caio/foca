@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.4.0 - 2022-07-02
+
+- Optional feature `postcard-codec` now requires postcard v1.0
+
 ## v0.3.1 - 2022-05-29
 
 - Configuration can now be changed at runtime via `Foca::set_config`
