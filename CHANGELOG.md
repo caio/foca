@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.4.1 - 2022-07-23
+
+- Bugfix: "Member not found" trace lowered from warn to debug, only
+  affects users of the `tracing` feature
+
 ## v0.4.0 - 2022-07-02
 
 - Optional feature `postcard-codec` now requires postcard v1.0
