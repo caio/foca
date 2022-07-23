@@ -559,7 +559,7 @@ where
                         self.adjust_connection_state(runtime);
                     } else {
                         #[cfg(feature = "tracing")]
-                        tracing::warn!("Member not found");
+                        tracing::debug!("Member not found");
                     }
                 }
 
