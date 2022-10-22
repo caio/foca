@@ -13,7 +13,7 @@ use rand::{
 ///
 /// This is part of the Suspicion Mechanism described in section 4.2 of the
 /// original SWIM paper.
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum State {
     /// Member is active.
@@ -43,7 +43,7 @@ pub type Incarnation = u16;
 /// [`crate::Identity`]. An individual cluster update is simply a
 /// serialized Member which other Foca instances receive and use to
 /// update their own cluster state representation.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Member<T> {
     id: T,
