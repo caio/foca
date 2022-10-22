@@ -58,7 +58,7 @@ where
 
 /// A Notification contains information about high-level relevant
 /// state changes in the cluster or Foca itself.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Notification<T> {
     /// Foca discovered a new active member with identity T.
@@ -99,7 +99,7 @@ pub enum Notification<T> {
 
 /// Timer is an event that's scheduled by a [`Runtime`]. You won't need
 /// to construct or understand these, just ensure a timely delivery.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Timer<T> {
     /// Pick a random active member and initiate the probe cycle.

@@ -82,7 +82,7 @@ impl Identity for ID {
 
 pub struct BadCodec;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum BadCodecError {
     BufTooSmall,
     BadMessageID(u8),

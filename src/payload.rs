@@ -12,7 +12,7 @@ use crate::Incarnation;
 ///   expected;
 /// - A sequence of said `u16` updates (`foca::Member`);
 /// - And finally a tail of custom broadcasts, if at all used.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Header<T> {
     /// The identity of the sender
@@ -69,7 +69,7 @@ pub struct Header<T> {
 /// to one or more identities. If a recipient decides to accept it,
 /// it replies with a `Feed` message, containing other active cluster
 /// members.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Message<T> {
     /// A Ping message. Replied with `Ack`.
