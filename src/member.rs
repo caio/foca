@@ -216,7 +216,7 @@ impl<T: PartialEq + Clone> Members<T> {
     ///     and using the same logic for other "pick random member"
     ///     mechanisms might break the math.
     pub fn choose_active_members<F>(
-        &mut self,
+        &self,
         wanted: usize,
         output: &mut Vec<Member<T>>,
         mut rng: impl Rng,
@@ -662,7 +662,7 @@ mod tests {
 
     #[test]
     fn choose_active_members_behaviour() {
-        let mut members = Members::new(Vec::from([
+        let members = Members::new(Vec::from([
             // 5 active members
             Member::alive(1),
             Member::alive(2),
