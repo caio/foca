@@ -1022,6 +1022,7 @@ where
         // being switched the Down state since we have little
         // confidence about our own state at this point.
         self.timer_token = self.timer_token.wrapping_add(1);
+        self.probe.clear();
 
         runtime.notify(Notification::Idle);
     }
@@ -2370,6 +2371,34 @@ mod tests {
         expect_scheduling!(runtime, send_indirect_probe.clone(), config().probe_rtt);
 
         (foca, probed, send_indirect_probe)
+    }
+
+    #[test]
+    fn going_idle_clears_probe_state() {
+        // Here we'll craft a scenario where a foca instance is in the middle
+        // of a probe cycle when, for whatever reason, it learns that there
+        // are no more active members in the cluster (thus going Idle)
+
+        // A foca is probing
+        let (mut foca, _probed, _send_indirect_probe) = craft_probing_foca(2);
+        let mut runtime = InMemoryRuntime::new();
+
+        // Clippy gets it wrong here: can't use just the plain iterator
+        // otherwise foca remains borrowed
+        #[allow(clippy::needless_collect)]
+        let updates = foca
+            .iter_members()
+            .cloned()
+            .map(Member::down)
+            .collect::<Vec<_>>();
+        // But somehow all members "disappear"
+        assert_eq!(Ok(()), foca.apply_many(updates.into_iter(), &mut runtime));
+        // Making the instance go idle
+        expect_notification!(runtime, Notification::<ID>::Idle);
+
+        // The probe state should've been cleared now so that when the instance
+        // resumes operation things are actually functional
+        assert!(foca.probe().validate(), "invalid probe state")
     }
 
     #[test]
