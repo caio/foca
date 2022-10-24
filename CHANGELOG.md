@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.5.0 - 2022-10-24
+
+- Foca now gracefully resumes probing when it detects an incorrect
+  probe cycle. https://github.com/caio/foca/pull/13
+- Fixed one more instance of missing cleanup when the cluster state
+  changes mid probe cycle. https://github.com/caio/foca/issues/2
+- Public entities now implement `Eq` along with `PartialEq`
+
 ## v0.4.1 - 2022-07-23
 
 - Bugfix: "Member not found" trace lowered from warn to debug, only
