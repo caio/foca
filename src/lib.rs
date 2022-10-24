@@ -871,7 +871,15 @@ where
     }
 
     fn probe_random_member(&mut self, mut runtime: impl Runtime<T>) -> Result<()> {
+        debug_assert_eq!(self.connection_state, ConnectionState::Connected);
         if !self.probe.validate() {
+            // Probe has invalid state. We'll reset and submit another timer
+            // so that foca can recover from the issue gracefully
+            self.probe.clear();
+            runtime.submit_after(
+                Timer::ProbeRandomMember(self.timer_token),
+                self.config.probe_period,
+            );
             return Err(Error::IncompleteProbeCycle);
         }
 
@@ -3191,6 +3199,31 @@ mod tests {
         assert_eq!(
             Ok(()),
             other_foca.handle_data(&broadcast_message, &mut runtime)
+        );
+    }
+
+    #[test]
+    fn can_recover_from_incomplete_probe_cycle() {
+        // Here we get a foca in the middle of a probe cycle. The correct
+        // sequencing should submit `_send_indirect_probe`
+        let (mut foca, _probed, _send_indirect_probe) = craft_probing_foca(2);
+        let mut runtime = InMemoryRuntime::new();
+        // ... but we'll manually craft a ProbeRandomMember event instead
+        // to trigger the validation failure
+        assert_eq!(
+            Err(Error::IncompleteProbeCycle),
+            foca.handle_timer(Timer::ProbeRandomMember(foca.timer_token()), &mut runtime)
+        );
+
+        // This situation should lead to two things happening:
+        // 1. the probe state should become valid again
+        assert!(foca.probe().validate(), "didn't recover probe state");
+        // 2. should've scheduled a new probe
+        assert!(
+            runtime
+                .find_scheduling(|t| matches!(t, Timer::ProbeRandomMember(_)))
+                .is_some(),
+            "didn't submit a new probe event"
         );
     }
 }

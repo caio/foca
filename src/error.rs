@@ -32,6 +32,10 @@ pub enum Error {
     /// steps didn't happen. Bug in the runtime/scheduling
     /// mechanism most likely.
     ///
+    /// Foca tries to resume normal operations after emitting this
+    /// error, but any occurance of it is a sign that something is
+    /// not behaving as expected
+    ///
     /// Must not happen under normal circumstances.
     IncompleteProbeCycle,
 
