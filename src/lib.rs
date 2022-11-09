@@ -1152,6 +1152,7 @@ where
             // Seek back and write the correct number of items added
             buf.get_mut()[tally_position..].as_mut().put_u16(num_items);
             #[cfg(feature = "tracing")]
+            #[allow(clippy::needless_borrow)]
             span.record("num_updates", &num_items);
         }
 
@@ -1168,11 +1169,13 @@ where
             #[cfg_attr(not(feature = "tracing"), allow(unused_variables))]
             let num_broadcasts = self.custom_broadcasts.fill(&mut buf, usize::MAX);
             #[cfg(feature = "tracing")]
+            #[allow(clippy::needless_borrow)]
             span.record("num_broadcasts", &num_broadcasts);
         }
 
         let data = buf.into_inner();
         #[cfg(feature = "tracing")]
+        #[allow(clippy::needless_borrow)]
         span.record("len", &data.len());
 
         #[cfg(feature = "tracing")]
