@@ -185,6 +185,7 @@ impl BadCodec {
             8 => Message::Announce,
             9 => Message::Feed,
             10 => Message::Broadcast,
+            11 => Message::TurnUndead,
             other => return Err(BadCodecError::BadMessageID(other)),
         };
 
@@ -251,6 +252,9 @@ impl BadCodec {
             }
             Message::Broadcast => {
                 buf.put_u8(10);
+            }
+            Message::TurnUndead => {
+                buf.put_u8(11);
             }
         }
 

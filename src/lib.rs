@@ -543,7 +543,7 @@ where
                 token,
             } => {
                 if self.timer_token == token {
-                    let as_down = Member::new(member_id, incarnation, State::Down);
+                    let as_down = Member::new(member_id.clone(), incarnation, State::Down);
                     if let Some(summary) = self
                         .members
                         // Down is terminal, so before doing that we ensure the member
@@ -556,7 +556,14 @@ where
                     {
                         self.handle_apply_summary(&summary, as_down, &mut runtime)?;
                         // Member went down we might need to adjust our internal state
-                        self.adjust_connection_state(runtime);
+                        self.adjust_connection_state(&mut runtime);
+
+                        if self.config.notify_down_members {
+                            // As a courtesy, we send a lightweight message to the member
+                            // we're declaring down so that if it manages to receive it,
+                            // it can react accordingly
+                            self.send_message(member_id, Message::TurnUndead, runtime)?;
+                        }
                     } else {
                         #[cfg(feature = "tracing")]
                         tracing::debug!("Member not found");
@@ -726,6 +733,10 @@ where
             #[cfg(feature = "tracing")]
             tracing::debug!("Discarded: Inactive sender");
 
+            if self.config.notify_down_members {
+                self.send_message(src, Message::TurnUndead, runtime)?;
+            }
+
             return Ok(());
         }
 
@@ -840,6 +851,9 @@ where
                 }
             }
             Message::Announce => self.send_message(src, Message::Feed, runtime)?,
+            Message::TurnUndead => {
+                self.handle_self_update(Incarnation::default(), State::Down, runtime)?
+            }
             // Nothing to do. These messages do not expect any reply
             Message::Gossip | Message::Feed | Message::Broadcast => {}
         };
@@ -1105,8 +1119,8 @@ where
             .map_err(Error::Encode)?;
 
         let (needs_piggyback, only_active_members) = match header.message {
-            // Announce packets contain nothing but the header
-            Message::Announce => (false, false),
+            // Announce/TurnUndead packets contain nothing but the header
+            Message::Announce | Message::TurnUndead => (false, false),
             // Feed packets stuff active members at the tail
             Message::Feed => (true, true),
             // Broadcast packets stuffs only custom broadcasts
@@ -2337,12 +2351,13 @@ mod tests {
     //      to continue the probe cycle
     fn craft_probing_foca(
         num_members: u8,
+        config: Config,
     ) -> (
         Foca<ID, BadCodec, SmallRng, NoCustomBroadcast>,
         ID,
         Timer<ID>,
     ) {
-        let mut foca = Foca::new(ID::new(1), config(), rng(), codec());
+        let mut foca = Foca::new(ID::new(1), config.clone(), rng(), codec());
         let mut runtime = InMemoryRuntime::new();
 
         assert!(num_members > 0);
@@ -2355,7 +2370,7 @@ mod tests {
         // The runtime shoud've been instructed to schedule a
         // probe for later on
         let expected_timer = Timer::ProbeRandomMember(foca.timer_token());
-        expect_scheduling!(runtime, expected_timer.clone(), config().probe_period);
+        expect_scheduling!(runtime, expected_timer.clone(), config.probe_period);
 
         // We'll trigger it right now instead
         runtime.clear();
@@ -2379,7 +2394,7 @@ mod tests {
             probed_id: probed,
             token: foca.timer_token(),
         };
-        expect_scheduling!(runtime, send_indirect_probe.clone(), config().probe_rtt);
+        expect_scheduling!(runtime, send_indirect_probe.clone(), config.probe_rtt);
 
         (foca, probed, send_indirect_probe)
     }
@@ -2391,7 +2406,7 @@ mod tests {
         // are no more active members in the cluster (thus going Idle)
 
         // A foca is probing
-        let (mut foca, _probed, _send_indirect_probe) = craft_probing_foca(2);
+        let (mut foca, _probed, _send_indirect_probe) = craft_probing_foca(2, config());
         let mut runtime = InMemoryRuntime::new();
 
         // Clippy gets it wrong here: can't use just the plain iterator
@@ -2414,7 +2429,7 @@ mod tests {
 
     #[test]
     fn probe_ping_ack_cycle() {
-        let (mut foca, probed, send_indirect_probe) = craft_probing_foca(5);
+        let (mut foca, probed, send_indirect_probe) = craft_probing_foca(5, config());
         let mut runtime = InMemoryRuntime::new();
 
         // Now if probed replies before the timer fires, the probe
@@ -2441,7 +2456,7 @@ mod tests {
 
     #[test]
     fn probe_cycle_requires_correct_probe_number() {
-        let (mut foca, probed, send_indirect_probe) = craft_probing_foca(5);
+        let (mut foca, probed, send_indirect_probe) = craft_probing_foca(5, config());
         let mut runtime = InMemoryRuntime::new();
 
         let incorrect_probe_number = foca.probe().probe_number() + 1;
@@ -2478,7 +2493,7 @@ mod tests {
         // `num_indirect_probes + 1` so that we can verify that
         // we don't send more requests than the configured value.
         let (mut foca, probed, send_indirect_probe) =
-            craft_probing_foca((num_indirect_probes + 2) as u8);
+            craft_probing_foca((num_indirect_probes + 2) as u8, config());
         let mut runtime = InMemoryRuntime::new();
 
         // `probed` did NOT reply with an Ack before the timer
@@ -3209,7 +3224,7 @@ mod tests {
     fn can_recover_from_incomplete_probe_cycle() {
         // Here we get a foca in the middle of a probe cycle. The correct
         // sequencing should submit `_send_indirect_probe`
-        let (mut foca, _probed, _send_indirect_probe) = craft_probing_foca(2);
+        let (mut foca, _probed, _send_indirect_probe) = craft_probing_foca(2, config());
         let mut runtime = InMemoryRuntime::new();
         // ... but we'll manually craft a ProbeRandomMember event instead
         // to trigger the validation failure
@@ -3227,6 +3242,93 @@ mod tests {
                 .find_scheduling(|t| matches!(t, Timer::ProbeRandomMember(_)))
                 .is_some(),
             "didn't submit a new probe event"
+        );
+    }
+
+    #[test]
+    fn declaring_a_member_as_down_notifies_them() {
+        let config = {
+            let mut c = Config::simple();
+            c.notify_down_members = true;
+            c
+        };
+
+        let (mut foca, probed, send_indirect_probe) = craft_probing_foca(2, config);
+        let mut runtime = InMemoryRuntime::new();
+
+        // `probed` did NOT reply with an Ack before the timer
+        assert_eq!(Ok(()), foca.handle_timer(send_indirect_probe, &mut runtime));
+        // ... and nothing happens for the indirect cycle
+
+        runtime.clear();
+        // So by the time the ChangeSuspectToDown timer fires
+        assert_eq!(
+            Ok(()),
+            foca.handle_timer(
+                Timer::ChangeSuspectToDown {
+                    member_id: probed,
+                    incarnation: Incarnation::default(),
+                    token: foca.timer_token()
+                },
+                &mut runtime
+            )
+        );
+
+        // The runtime should be instructed to send data to `probed`
+        let data = runtime
+            .take_data(probed)
+            .expect("probed should be sent a message");
+        let header = codec().decode_header(&data[..]).expect("valid payload");
+
+        // And it should be a TurnUndead message
+        assert_eq!(
+            header.message,
+            Message::TurnUndead,
+            "member should have been sent a TurnUndead message"
+        );
+    }
+
+    #[test]
+    fn message_from_down_member_is_replied_with_turn_undead() {
+        let config = {
+            let mut c = config();
+            c.notify_down_members = true;
+            c
+        };
+        let mut runtime = InMemoryRuntime::new();
+
+        // We have a simple foca instance
+        let mut foca = Foca::new(ID::new(1), config, rng(), codec());
+        let down_id = ID::new(2);
+        // That knows that ID=2 is down
+        assert_eq!(Ok(()), foca.apply(Member::down(down_id), &mut runtime));
+
+        // And we have a message from member ID=2 to ID=1
+        let header = Header {
+            src: down_id,
+            src_incarnation: 1,
+            dst: ID::new(1),
+            message: Message::Announce,
+        };
+
+        let mut msg = Vec::new();
+        codec()
+            .encode_header(&header, &mut msg)
+            .expect("codec works fine");
+
+        // When foca receives such message
+        assert_eq!(Ok(()), foca.handle_data(&msg[..], &mut runtime));
+
+        let data = runtime
+            .take_data(down_id)
+            .expect("should dispatch a message to ID=2");
+        let h = codec().decode_header(&data[..]).expect("valid payload");
+
+        // It should send a message to ID=2 notifying it
+        assert_eq!(
+            h.message,
+            Message::TurnUndead,
+            "id=2 should have been sent a TurnUndead message"
         );
     }
 }

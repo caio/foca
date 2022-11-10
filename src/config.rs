@@ -94,10 +94,25 @@ pub struct Config {
     /// to a value smaller than your network's MTU.  1400 is a good
     /// value for a in a non-ancient network.
     pub max_packet_size: NonZeroUsize,
+
+    /// Wether foca should try to let members that are down know about it
+    ///
+    /// Whenever a member is declared down by the cluster, their messages
+    /// get ignored and there's no way for them to learn that this is happening.
+    /// With this setting enabled, will try to notify the down member that
+    /// their messages are being discarded.
+    ///
+    /// This feature is an extension to the SWIM protocol and should be left
+    /// disabled if you're aiming at pure SWIM behavior.
+    pub notify_down_members: bool,
 }
 
 impl Config {
     /// A simple configuration that should work well in a LAN scenario.
+    ///
+    /// This is Foca in its simplest form and has no extensions enabled.
+    /// Use this config if you are trying to get a grasp of how SWIM
+    /// works, without any additional behavior.
     pub fn simple() -> Self {
         Self {
             probe_period: Duration::from_millis(1500),
@@ -110,6 +125,8 @@ impl Config {
             remove_down_after: Duration::from_secs(15),
 
             max_packet_size: NonZeroUsize::new(1400).unwrap(),
+
+            notify_down_members: false,
         }
     }
 }
@@ -144,6 +161,8 @@ impl Config {
             remove_down_after: Duration::from_secs(15),
 
             max_packet_size: NonZeroUsize::new(1400).unwrap(),
+
+            notify_down_members: true,
         }
     }
 
@@ -169,6 +188,8 @@ impl Config {
             remove_down_after: Duration::from_secs(15),
 
             max_packet_size: NonZeroUsize::new(1400).unwrap(),
+
+            notify_down_members: true,
         }
     }
 
