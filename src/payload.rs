@@ -134,6 +134,12 @@ pub enum Message<T> {
     /// Deliberate dissemination of custom broadcasts. Broadcast
     /// messages do not contain cluster updates.
     Broadcast,
+
+    /// Indicates that the receiver is considered down by the sender
+    ///
+    /// This is an optional message that Foca sends whenever a member
+    /// that's considered down sends a message.
+    TurnUndead,
 }
 
 /// ProbeNumber is simply a bookkeeping mechanism to try and prevent
