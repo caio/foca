@@ -616,6 +616,25 @@ where
                     Ok(())
                 }
             }
+            Timer::PeriodicAnnounce(token) => {
+                if token == self.timer_token && self.connection_state == ConnectionState::Connected
+                {
+                    // The configuration may change during runtime, so we can't
+                    // assume that this is Some() when the timer fires
+                    if let Some(ref params) = self.config.periodic_announce {
+                        // Re-schedule the event
+                        runtime.submit_after(
+                            Timer::PeriodicAnnounce(self.timer_token),
+                            params.frequency,
+                        );
+                        // And send the messages
+                        self.choose_and_send(params.num_members.get(), Message::Announce, runtime)?;
+                    }
+                }
+                // else: invalid token and/or not-connected: may happen if the
+                // instance gets declared down by the cluster
+                Ok(())
+            }
         }
     }
 
@@ -652,6 +671,7 @@ where
     pub fn set_config(&mut self, config: Config) -> Result<()> {
         if self.config.probe_period != config.probe_period
             || self.config.probe_rtt != config.probe_rtt
+            || (self.config.periodic_announce.is_none() && config.periodic_announce.is_some())
         {
             Err(Error::InvalidConfig)
         } else {
@@ -1092,6 +1112,10 @@ where
             Timer::ProbeRandomMember(self.timer_token),
             self.config.probe_period,
         );
+
+        if let Some(ref params) = self.config.periodic_announce {
+            runtime.submit_after(Timer::PeriodicAnnounce(self.timer_token), params.frequency);
+        }
 
         runtime.notify(Notification::Active);
     }
@@ -1622,6 +1646,20 @@ mod tests {
                 $runtime.take_notification($notification).is_none(),
                 "Unwanted notification {:?} found",
                 $notification
+            );
+        };
+    }
+
+    macro_rules! expect_message {
+        ($runtime: expr, $member: expr, $message: expr) => {
+            let d = $runtime
+                .take_data($member)
+                .unwrap_or_else(|| panic!("Message to member {:?} not found", $member));
+            let (header, _) = decode(d);
+            assert_eq!(
+                header.message, $message,
+                "Message to member {:?} is {:?}. Expected {:?}",
+                $member, header.message, $message
             );
         };
     }
@@ -3288,18 +3326,8 @@ mod tests {
             )
         );
 
-        // The runtime should be instructed to send data to `probed`
-        let data = runtime
-            .take_data(probed)
-            .expect("probed should be sent a message");
-        let header = codec().decode_header(&data[..]).expect("valid payload");
-
-        // And it should be a TurnUndead message
-        assert_eq!(
-            header.message,
-            Message::TurnUndead,
-            "member should have been sent a TurnUndead message"
-        );
+        // The runtime should be instructed to send a TurnUndead message to `probed`
+        expect_message!(runtime, probed, Message::<ID>::TurnUndead);
     }
 
     #[test]
@@ -3333,16 +3361,79 @@ mod tests {
         // When foca receives such message
         assert_eq!(Ok(()), foca.handle_data(&msg[..], &mut runtime));
 
-        let data = runtime
-            .take_data(down_id)
-            .expect("should dispatch a message to ID=2");
-        let h = codec().decode_header(&data[..]).expect("valid payload");
-
         // It should send a message to ID=2 notifying it
-        assert_eq!(
-            h.message,
-            Message::TurnUndead,
-            "id=2 should have been sent a TurnUndead message"
+        expect_message!(runtime, down_id, Message::<ID>::TurnUndead);
+    }
+
+    #[test]
+    fn periodic_announce_behaviour() {
+        let frequency = Duration::from_millis(500);
+        let num_members = NonZeroUsize::new(2).unwrap();
+        let config = {
+            let mut c = config();
+            c.periodic_announce = Some(config::PeriodicParams {
+                frequency,
+                num_members,
+            });
+            c
+        };
+
+        // A foca instance that periodically announces
+        let mut foca = Foca::new(ID::new(1), config, rng(), codec());
+        let mut runtime = InMemoryRuntime::new();
+
+        // When it becomes active (i.e.: has at least one active member)
+        assert_eq!(Ok(()), foca.apply(Member::alive(ID::new(2)), &mut runtime));
+        assert_eq!(Ok(()), foca.apply(Member::alive(ID::new(3)), &mut runtime));
+
+        // Should schedule an event for announcing
+        expect_scheduling!(
+            runtime,
+            Timer::<ID>::PeriodicAnnounce(foca.timer_token()),
+            frequency
         );
+
+        runtime.clear();
+        // After the event fires
+        assert_eq!(
+            Ok(()),
+            foca.handle_timer(Timer::PeriodicAnnounce(foca.timer_token()), &mut runtime)
+        );
+
+        // It should've scheduled the event again
+        expect_scheduling!(
+            runtime,
+            Timer::<ID>::PeriodicAnnounce(foca.timer_token()),
+            frequency
+        );
+
+        // And sent an announce message to `num_members` random members
+        // (since num_members=2 and this instance only knows about two, we know
+        // which should've been picked)
+        expect_message!(runtime, ID::new(2), Message::<ID>::Announce);
+        expect_message!(runtime, ID::new(3), Message::<ID>::Announce);
+    }
+
+    #[test]
+    fn periodic_announce_cannot_be_enabled_at_runtime() {
+        let mut c = config();
+        assert!(c.periodic_announce.is_none());
+
+        // A foca instance that's running without periodic announce
+        let mut foca = Foca::new(ID::new(1), c.clone(), rng(), codec());
+
+        c.periodic_announce = Some(config::PeriodicParams {
+            frequency: Duration::from_secs(5),
+            num_members: NonZeroUsize::new(1).unwrap(),
+        });
+
+        // Must not be able to enable it during runtime
+        assert_eq!(Err(Error::InvalidConfig), foca.set_config(c.clone()));
+
+        // However, a foca that starts with periodic announce enabled
+        let mut foca = Foca::new(ID::new(1), c, rng(), codec());
+
+        // Is able to turn it off
+        assert_eq!(Ok(()), foca.set_config(config()));
     }
 }
