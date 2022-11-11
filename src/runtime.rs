@@ -129,6 +129,10 @@ pub enum Timer<T> {
     /// Forgets about dead member `T`, allowing them to join the
     /// cluster again with the same identity.
     RemoveDown(T),
+
+    /// Sends a [`crate::Message::Announce`] to randomly chosen members as
+    /// specified by [`crate::Config::periodic_announce`]
+    PeriodicAnnounce(TimerToken),
 }
 
 /// TimerToken is simply a bookkeeping mechanism to try and prevent

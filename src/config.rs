@@ -105,6 +105,39 @@ pub struct Config {
     /// This feature is an extension to the SWIM protocol and should be left
     /// disabled if you're aiming at pure SWIM behavior.
     pub notify_down_members: bool,
+
+    /// How often should foca ask its peers for more peers
+    ///
+    /// [`crate::Message::Announce`] is the mechanism foca uses to discover
+    /// members. After joining a sizeable cluster, it may take a while until
+    /// foca discovers every active member. Periodically announcing helps speed
+    /// up this process.
+    ///
+    /// This setting is helpful for any cluster size, but smaller ones can
+    /// get by without it if discovering the full active roster quickly is
+    /// not a requirement.
+    ///
+    /// As a rule of thumb, use large values for `frequency` (say, every
+    /// 30s, every minute, etc) and small values for `num_members`: just
+    /// one might be good enough for many clusters.
+    ///
+    /// Whilst you can change the parameters at runtime, foca prevents you from
+    /// changing it from `None` to `Some` to simplify reasoning. It's required
+    /// to recreate your foca instance in these cases.
+    ///
+    /// This feature is an extension to the SWIM protocol and should be left
+    /// disabled if you're aiming at pure SWIM behavior.
+    pub periodic_announce: Option<PeriodicParams>,
+}
+
+/// Configuration for a task that should happen periodically
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct PeriodicParams {
+    /// How often should the task be performed
+    pub frequency: Duration,
+    /// How many random members should be chosen
+    pub num_members: NonZeroUsize,
 }
 
 impl Config {
@@ -127,6 +160,8 @@ impl Config {
             max_packet_size: NonZeroUsize::new(1400).unwrap(),
 
             notify_down_members: false,
+
+            periodic_announce: None,
         }
     }
 }
@@ -163,6 +198,11 @@ impl Config {
             max_packet_size: NonZeroUsize::new(1400).unwrap(),
 
             notify_down_members: true,
+
+            periodic_announce: Some(PeriodicParams {
+                frequency: Duration::from_secs(30),
+                num_members: NonZeroUsize::new(1).unwrap(),
+            }),
         }
     }
 
@@ -190,6 +230,11 @@ impl Config {
             max_packet_size: NonZeroUsize::new(1400).unwrap(),
 
             notify_down_members: true,
+
+            periodic_announce: Some(PeriodicParams {
+                frequency: Duration::from_secs(60),
+                num_members: NonZeroUsize::new(2).unwrap(),
+            }),
         }
     }
 
