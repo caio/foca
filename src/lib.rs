@@ -351,17 +351,31 @@ where
     /// to attempt reducing the time it takes for information to
     /// propagate thoroughly.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(runtime)))]
-    pub fn gossip(&mut self, mut runtime: impl Runtime<T>) -> Result<()> {
+    pub fn gossip(&mut self, runtime: impl Runtime<T>) -> Result<()> {
+        self.choose_and_send(
+            self.config.num_indirect_probes.get(),
+            Message::Gossip,
+            runtime,
+        )
+    }
+
+    // Pick `num_members` random active members and send `msg` to them
+    fn choose_and_send(
+        &mut self,
+        num_members: usize,
+        msg: Message<T>,
+        mut runtime: impl Runtime<T>,
+    ) -> Result<()> {
         self.member_buf.clear();
         self.members.choose_active_members(
-            self.config.num_indirect_probes.get(),
+            num_members,
             &mut self.member_buf,
             &mut self.rng,
             |_| true,
         );
 
         while let Some(chosen) = self.member_buf.pop() {
-            self.send_message(chosen.into_identity(), Message::Gossip, &mut runtime)?;
+            self.send_message(chosen.into_identity(), msg.clone(), &mut runtime)?;
         }
 
         Ok(())
