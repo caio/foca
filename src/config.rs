@@ -128,6 +128,28 @@ pub struct Config {
     /// This feature is an extension to the SWIM protocol and should be left
     /// disabled if you're aiming at pure SWIM behavior.
     pub periodic_announce: Option<PeriodicParams>,
+
+    /// How often should foca send cluster updates to peers
+    ///
+    /// By default, SWIM disseminates cluster updates during the direct and
+    /// indirect probe cycle (See [`crate::Message`]). This setting instructs
+    /// foca to also propagate updates periodically.
+    ///
+    /// Periodically gossiping influences the speed in which the cluster learns
+    /// new information, but gossiping too much is often unnecessary since
+    /// cluster changes are not (normally) high-rate events.
+    ///
+    /// A LAN cluster can afford high frequency gossiping (every 200ms, for example)
+    /// without much worry; A WAN cluster might have better results gossiping less
+    /// often (500ms) but to more members at once.
+    ///
+    /// Whilst you can change the parameters at runtime, foca prevents you from
+    /// changing it from `None` to `Some` to simplify reasoning. It's required
+    /// to recreate your foca instance in these cases.
+    ///
+    /// This feature is an extension to the SWIM protocol and should be left
+    /// disabled if you're aiming at pure SWIM behavior.
+    pub periodic_gossip: Option<PeriodicParams>,
 }
 
 /// Configuration for a task that should happen periodically
@@ -162,6 +184,7 @@ impl Config {
             notify_down_members: false,
 
             periodic_announce: None,
+            periodic_gossip: None,
         }
     }
 }
@@ -203,6 +226,10 @@ impl Config {
                 frequency: Duration::from_secs(30),
                 num_members: NonZeroUsize::new(1).unwrap(),
             }),
+            periodic_gossip: Some(PeriodicParams {
+                frequency: Duration::from_millis(200),
+                num_members: NonZeroUsize::new(3).unwrap(),
+            }),
         }
     }
 
@@ -234,6 +261,10 @@ impl Config {
             periodic_announce: Some(PeriodicParams {
                 frequency: Duration::from_secs(60),
                 num_members: NonZeroUsize::new(2).unwrap(),
+            }),
+            periodic_gossip: Some(PeriodicParams {
+                frequency: Duration::from_millis(500),
+                num_members: NonZeroUsize::new(4).unwrap(),
             }),
         }
     }
