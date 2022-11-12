@@ -133,6 +133,10 @@ pub enum Timer<T> {
     /// Sends a [`crate::Message::Announce`] to randomly chosen members as
     /// specified by [`crate::Config::periodic_announce`]
     PeriodicAnnounce(TimerToken),
+
+    /// Sends a [`crate::Message::Gossip`] to randomly chosen members as
+    /// specified by [`crate::Config::periodic_gossip`]
+    PeriodicGossip(TimerToken),
 }
 
 /// TimerToken is simply a bookkeeping mechanism to try and prevent

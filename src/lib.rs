@@ -635,6 +635,20 @@ where
                 // instance gets declared down by the cluster
                 Ok(())
             }
+            Timer::PeriodicGossip(token) => {
+                // Exact same thing as PeriodicAnnounce, just using different settings / messages
+                if token == self.timer_token && self.connection_state == ConnectionState::Connected
+                {
+                    if let Some(ref params) = self.config.periodic_gossip {
+                        runtime.submit_after(
+                            Timer::PeriodicGossip(self.timer_token),
+                            params.frequency,
+                        );
+                        self.choose_and_send(params.num_members.get(), Message::Gossip, runtime)?;
+                    }
+                }
+                Ok(())
+            }
         }
     }
 
@@ -672,6 +686,7 @@ where
         if self.config.probe_period != config.probe_period
             || self.config.probe_rtt != config.probe_rtt
             || (self.config.periodic_announce.is_none() && config.periodic_announce.is_some())
+            || (self.config.periodic_gossip.is_none() && config.periodic_gossip.is_some())
         {
             Err(Error::InvalidConfig)
         } else {
@@ -1115,6 +1130,10 @@ where
 
         if let Some(ref params) = self.config.periodic_announce {
             runtime.submit_after(Timer::PeriodicAnnounce(self.timer_token), params.frequency);
+        }
+
+        if let Some(ref params) = self.config.periodic_gossip {
+            runtime.submit_after(Timer::PeriodicGossip(self.timer_token), params.frequency);
         }
 
         runtime.notify(Notification::Active);
@@ -3365,20 +3384,27 @@ mod tests {
         expect_message!(runtime, down_id, Message::<ID>::TurnUndead);
     }
 
-    #[test]
-    fn periodic_announce_behaviour() {
+    // There are multiple "do this thing periodically" settings. This
+    // helps test those. Takes:
+    // - something that knows which configuration to set
+    // - something that knows which event should be sent
+    // - the message that should be sent
+    fn check_periodic_behaviour<F, G>(config_setter: F, mut event_maker: G, message: Message<ID>)
+    where
+        F: Fn(&mut Config, config::PeriodicParams),
+        G: FnMut(TimerToken) -> Timer<ID>,
+    {
         let frequency = Duration::from_millis(500);
         let num_members = NonZeroUsize::new(2).unwrap();
-        let config = {
-            let mut c = config();
-            c.periodic_announce = Some(config::PeriodicParams {
-                frequency,
-                num_members,
-            });
-            c
+        let params = config::PeriodicParams {
+            frequency,
+            num_members,
         };
+        let mut config = config();
 
-        // A foca instance that periodically announces
+        // A foca with the given periodic config
+        config_setter(&mut config, params);
+
         let mut foca = Foca::new(ID::new(1), config, rng(), codec());
         let mut runtime = InMemoryRuntime::new();
 
@@ -3386,32 +3412,46 @@ mod tests {
         assert_eq!(Ok(()), foca.apply(Member::alive(ID::new(2)), &mut runtime));
         assert_eq!(Ok(()), foca.apply(Member::alive(ID::new(3)), &mut runtime));
 
-        // Should schedule an event for announcing
-        expect_scheduling!(
-            runtime,
-            Timer::<ID>::PeriodicAnnounce(foca.timer_token()),
-            frequency
-        );
+        // Should schedule the given event
+        expect_scheduling!(runtime, event_maker(foca.timer_token()), frequency);
 
         runtime.clear();
         // After the event fires
         assert_eq!(
             Ok(()),
-            foca.handle_timer(Timer::PeriodicAnnounce(foca.timer_token()), &mut runtime)
+            foca.handle_timer(event_maker(foca.timer_token()), &mut runtime)
         );
 
         // It should've scheduled the event again
-        expect_scheduling!(
-            runtime,
-            Timer::<ID>::PeriodicAnnounce(foca.timer_token()),
-            frequency
-        );
+        expect_scheduling!(runtime, event_maker(foca.timer_token()), frequency);
 
-        // And sent an announce message to `num_members` random members
+        // And sent the message to `num_members` random members
         // (since num_members=2 and this instance only knows about two, we know
         // which should've been picked)
-        expect_message!(runtime, ID::new(2), Message::<ID>::Announce);
-        expect_message!(runtime, ID::new(3), Message::<ID>::Announce);
+        expect_message!(runtime, ID::new(2), message);
+        expect_message!(runtime, ID::new(3), message);
+    }
+
+    #[test]
+    fn periodic_gossip_behaviour() {
+        check_periodic_behaviour(
+            |c: &mut Config, p: config::PeriodicParams| {
+                c.periodic_gossip = Some(p);
+            },
+            |t: TimerToken| -> Timer<ID> { Timer::PeriodicGossip(t) },
+            Message::Gossip,
+        );
+    }
+
+    #[test]
+    fn periodic_announce_behaviour() {
+        check_periodic_behaviour(
+            |c: &mut Config, p: config::PeriodicParams| {
+                c.periodic_announce = Some(p);
+            },
+            |t: TimerToken| -> Timer<ID> { Timer::PeriodicAnnounce(t) },
+            Message::Announce,
+        );
     }
 
     #[test]
@@ -3431,6 +3471,29 @@ mod tests {
         assert_eq!(Err(Error::InvalidConfig), foca.set_config(c.clone()));
 
         // However, a foca that starts with periodic announce enabled
+        let mut foca = Foca::new(ID::new(1), c, rng(), codec());
+
+        // Is able to turn it off
+        assert_eq!(Ok(()), foca.set_config(config()));
+    }
+
+    #[test]
+    fn periodic_gossip_cannot_be_enabled_at_runtime() {
+        let mut c = config();
+        assert!(c.periodic_gossip.is_none());
+
+        // A foca instance that's running without periodic gossip
+        let mut foca = Foca::new(ID::new(1), c.clone(), rng(), codec());
+
+        c.periodic_gossip = Some(config::PeriodicParams {
+            frequency: Duration::from_secs(5),
+            num_members: NonZeroUsize::new(1).unwrap(),
+        });
+
+        // Must not be able to enable it during runtime
+        assert_eq!(Err(Error::InvalidConfig), foca.set_config(c.clone()));
+
+        // However, a foca that starts with periodic gossip enabled
         let mut foca = Foca::new(ID::new(1), c, rng(), codec());
 
         // Is able to turn it off
