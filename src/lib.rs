@@ -644,7 +644,15 @@ where
                             Timer::PeriodicGossip(self.timer_token),
                             params.frequency,
                         );
-                        self.choose_and_send(params.num_members.get(), Message::Gossip, runtime)?;
+
+                        // Only actually gossip if there are updates to send
+                        if !self.updates.is_empty() || !self.custom_broadcasts.is_empty() {
+                            self.choose_and_send(
+                                params.num_members.get(),
+                                Message::Gossip,
+                                runtime,
+                            )?;
+                        }
                     }
                 }
                 Ok(())
