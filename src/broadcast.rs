@@ -207,6 +207,10 @@ where
             .windows(2)
             .all(|w| w[0].remaining_tx <= w[1].remaining_tx)
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.storage.is_empty()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -239,13 +243,6 @@ impl<T: AsRef<[u8]>> Ord for Entry<T> {
 impl<T: AsRef<[u8]>> PartialOrd for Entry<T> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
-    }
-}
-
-#[cfg(test)]
-impl<T> Broadcasts<T> {
-    pub fn is_empty(&self) -> bool {
-        self.storage.is_empty()
     }
 }
 
