@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.6.0 - 2022-11-13
+
+- New features:
+  - `Config::notify_down_members`: foca can now inform down members that
+     keep talking to the cluster that their messages are being ignored
+  - `Config::periodic_announce`: you can instruct foca to periodically
+    ask its peers for more peers, so that it learns about every member
+    in the cluster faster
+  - `Config::periodic_gossip`: to help speed up the propagation of
+    cluster updates
+- **BREAKING**: `Config::new_wan` and `Config::new_lan` now _enable_
+  every new feature in this release
+
 ## v0.5.0 - 2022-10-24
 
 - Foca now gracefully resumes probing when it detects an incorrect
