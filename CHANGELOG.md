@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.7.0 - 2022-11-27
+
+- **BREAKING**: `Config::remove_down_after` now defaults to 2 minutes
+  instead of 15 seconds: clients _not_ using the auto-rejoin
+  functionality will take longer to rejoin the cluster after being
+  declared down. Clients whose identity implement `Identity::renew`
+  have nothing to worry about.
+- Bugfix: A foca instance could end up learning that its previous
+  identity was as active member on the cluster, adding more false
+  positives to the cluster chatter
+
 ## v0.6.0 - 2022-11-13
 
 - New features:

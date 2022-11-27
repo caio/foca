@@ -1,14 +1,15 @@
 [package]
 name = "foca"
-version = "0.6.0"
+version = "0.7.0"
 authors = ["Caio <contact@caio.co>"]
 edition = "2021"
 license = "MPL-2.0"
-description = "Gossip-based cluster membership discovery (SWIM)"
+description = "Gossip-based cluster membership discovery, based on SWIM"
 keywords = ["swim", "gossip", "service-discovery", "memberlist"]
 categories = ["network-programming", "no-std"]
 repository = "https://github.com/caio/foca"
 homepage = "https://github.com/caio/foca"
+documentation = "https://docs.rs/foca"
 
 [package.metadata.docs.rs]
 all-features = true
