@@ -302,6 +302,28 @@ where
         for update in updates {
             if update.id() == &self.identity {
                 self.handle_self_update(update.incarnation(), update.state(), &mut runtime)?;
+            } else if self.identity.has_same_prefix(update.id()) {
+                // We received an update that's about an identity that *could*
+                // have been ours but definitely isn't (the branch right above,
+                // where we check equality)
+                //
+                // This can happen naturally: an instance rejoins the cluster
+                // while the cluster activelly talking about its previous identity
+                // going down.
+                //
+                // Any non-Down state, however, is questionable: maybe there are
+                // multiple instances using the same id; Maybe our own instance
+                // has been restarted many times at once as the cluster still
+                // hasn't figured out the correct state yet.
+                //
+                // So we assume that this is always delayed/stale information and
+                // declare this previous identity as Down.
+                //
+                // NOTE If there are multiple nodes claiming to have the same
+                //      identity, this will lead to a looping scenario where
+                //      node A delcares B down, then B changes identity and
+                //      declares A down; nonstop
+                self.apply_update(Member::down(update.into_identity()), &mut runtime)?;
             } else {
                 self.apply_update(update, &mut runtime)?;
             }
@@ -3506,5 +3528,36 @@ mod tests {
 
         // Is able to turn it off
         assert_eq!(Ok(()), foca.set_config(config()));
+    }
+
+    #[test]
+    fn cannot_learn_about_own_previous_identity() {
+        // We have an identity
+        let id = ID::new(1).rejoinable();
+        // And it's renewed version
+        let renewed = id.renew().unwrap();
+
+        // So that they are not the same
+        assert_ne!(id, renewed);
+        // But have the same prefix
+        assert!(id.has_same_prefix(&renewed));
+
+        // If we have an instance running with the renewed
+        // id as its identity
+        let mut foca = Foca::new(renewed, config(), rng(), codec());
+        let mut runtime = InMemoryRuntime::new();
+
+        // Learning anything about its previous identity
+        assert_eq!(
+            Ok(()),
+            foca.apply_many(core::iter::once(Member::alive(id)), &mut runtime)
+        );
+
+        // shouldn't change the cluster state
+        assert_eq!(
+            0,
+            foca.num_members(),
+            "shouldn't have considered a previous identity as a new member"
+        );
     }
 }
