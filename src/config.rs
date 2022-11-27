@@ -177,7 +177,7 @@ impl Config {
             max_transmissions: NonZeroU8::new(10).unwrap(),
 
             suspect_to_down_after: Duration::from_secs(3),
-            remove_down_after: Duration::from_secs(15),
+            remove_down_after: Duration::from_secs(120),
 
             max_packet_size: NonZeroUsize::new(1400).unwrap(),
 
@@ -216,7 +216,7 @@ impl Config {
             max_transmissions: Self::compute_max_tx(cluster_size),
 
             suspect_to_down_after: Self::suspicion_duration(cluster_size, period, 4.0),
-            remove_down_after: Duration::from_secs(15),
+            remove_down_after: Duration::from_secs(120),
 
             max_packet_size: NonZeroUsize::new(1400).unwrap(),
 
@@ -252,7 +252,7 @@ impl Config {
             max_transmissions: Self::compute_max_tx(cluster_size),
 
             suspect_to_down_after: Self::suspicion_duration(cluster_size, period, 6.0),
-            remove_down_after: Duration::from_secs(15),
+            remove_down_after: Duration::from_secs(120),
 
             max_packet_size: NonZeroUsize::new(1400).unwrap(),
 
