@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.8.0 - 2022-12-31
+
+- Bugfix: foca would send garbage at the end of the payload when
+  replying to Announce messages under certain scenarios.
+  See: https://github.com/caio/foca/issues/18
+
 ## v0.7.0 - 2022-11-27
 
 - **BREAKING**: `Config::remove_down_after` now defaults to 2 minutes
