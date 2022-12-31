@@ -1235,10 +1235,12 @@ where
                     .iter_active()
                     .filter(|member| member.id() != &dst)
                 {
-                    // XXX It's not very difficult to lift this restriction:
-                    // This means that codecs MUST NOT leave the buffer
-                    // dirty on failure
+                    let pos = buf.get_ref().len();
                     if let Err(_ignored) = self.codec.encode_member(member, &mut buf) {
+                        // encoding the member might have advanced the cursor
+                        // of the buffer before yielding the error
+                        // this resets it to the last known valid position
+                        buf.get_mut().truncate(pos);
                         break;
                     }
                     num_items += 1;
@@ -1511,7 +1513,7 @@ mod tests {
 
     fn encode(src: (Header<ID>, Vec<Member<ID>>)) -> Bytes {
         let (header, updates) = src;
-        let mut codec = BadCodec;
+        let mut codec = codec();
         let mut buf = BytesMut::new();
 
         codec
@@ -1529,7 +1531,7 @@ mod tests {
     }
 
     fn decode(mut src: impl Buf) -> (Header<ID>, Vec<Member<ID>>) {
-        let mut codec = BadCodec;
+        let mut codec = codec();
         let header = codec.decode_header(&mut src).unwrap();
 
         let mut updates = Vec::new();
@@ -2269,7 +2271,7 @@ mod tests {
         // in the cluster knows that our bump is 255, but everyone
         // knows about the ID::new(1) part.
         let target_id = ID::new_with_bump(1, 255);
-        let codec = BadCodec;
+        let codec = codec();
         let mut foca = Foca::new(target_id, config(), rng(), codec);
         let mut runtime = InMemoryRuntime::new();
 
@@ -3559,5 +3561,76 @@ mod tests {
             foca.num_members(),
             "shouldn't have considered a previous identity as a new member"
         );
+    }
+
+    // assuming fixed-length identity
+    fn encoded_feed_header_len() -> usize {
+        let header = Header {
+            src: ID::new(1),
+            src_incarnation: 0,
+            dst: ID::new(3),
+            message: Message::Feed,
+        };
+
+        let mut msg = Vec::new();
+        codec()
+            .encode_header(&header, &mut msg)
+            .expect("codec works fine");
+        msg.len()
+    }
+
+    #[test]
+    fn feed_does_not_contain_trailing_jumk() {
+        let mut config = config();
+        // we want a max packet size that can definitely fit
+        // feed header, a u16 (num_updates) and not enough
+        // to fit the rest of the message
+        // This way we can exercise what happens when encoding
+        // a feed message goes above the max length
+        config.max_packet_size = NonZeroUsize::new(
+            encoded_feed_header_len()
+            // num_updates
+            + 2
+            // so there's SOME extra space to try and encode a Member
+            // but not enough to fit all the metadata
+                +2,
+        )
+        .expect("non-zero");
+
+        // So now we will craft a scenario where one instance
+        // announces to another and then verify that we can handle
+        // the reply with no errors
+        let mut foca_one = Foca::new(ID::new(1), config.clone(), rng(), codec());
+        let mut runtime = InMemoryRuntime::new();
+
+        // let's assume that foca_one knows about another member, ID=3'
+        // so that the feed reply contains at least one member
+        assert_eq!(
+            Ok(()),
+            foca_one.apply(Member::alive(ID::new(3)), &mut runtime)
+        );
+
+        // ID=2 announces to our instance
+        let msg = encode((
+            Header {
+                src: ID::new(2),
+                src_incarnation: Incarnation::default(),
+                dst: ID::new(1),
+                message: Message::Announce,
+            },
+            Vec::default(),
+        ));
+        assert_eq!(Ok(()), foca_one.handle_data(&msg, &mut runtime));
+
+        // now the runtime should've been instructed to send a feed to
+        // ID=2
+        let data = runtime
+            .take_data(ID::new(2))
+            .expect("foca_one reply for foca_two");
+
+        let mut foca_two = Foca::new(ID::new(2), config, rng(), codec());
+        // and foca_two should be able to read it just fine
+        // (originally would fail with BroadcastsDisabledError)
+        assert_eq!(Ok(()), foca_two.handle_data(&data, &mut runtime));
     }
 }

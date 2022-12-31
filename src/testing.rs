@@ -274,24 +274,37 @@ impl BadCodec {
         Ok(Member::new(id, incarnation, state))
     }
 
+    fn try_put_u8(&self, mut buf: impl BufMut, num: u8) -> Result<(), BadCodecError> {
+        if buf.remaining_mut() > 0 {
+            buf.put_u8(num);
+            Ok(())
+        } else {
+            Err(BadCodecError::BufTooSmall)
+        }
+    }
+
+    fn try_put_u16(&self, mut buf: impl BufMut, num: u16) -> Result<(), BadCodecError> {
+        if buf.remaining_mut() > 1 {
+            buf.put_u16(num);
+            Ok(())
+        } else {
+            Err(BadCodecError::BufTooSmall)
+        }
+    }
+
     fn encode_member(
         &self,
         member: &Member<ID>,
         mut buf: impl BufMut,
     ) -> Result<(), BadCodecError> {
-        // threshold = 2 (ID) + 2 (incarnation) + 1 (state) = 7
-        if buf.remaining_mut() >= 5 {
-            member.id().serialize_into(&mut buf)?;
-            buf.put_u16(member.incarnation());
-            match member.state() {
-                State::Alive => buf.put_u8(1),
-                State::Suspect => buf.put_u8(2),
-                State::Down => buf.put_u8(3),
-            }
-            Ok(())
-        } else {
-            Err(BadCodecError::BufTooSmall)
+        member.id().serialize_into(&mut buf)?;
+        self.try_put_u16(&mut buf, member.incarnation())?;
+        match member.state() {
+            State::Alive => self.try_put_u8(&mut buf, 1)?,
+            State::Suspect => self.try_put_u8(&mut buf, 2)?,
+            State::Down => self.try_put_u8(&mut buf, 3)?,
         }
+        Ok(())
     }
 }
 
