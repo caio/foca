@@ -80,9 +80,22 @@ pub struct Config {
     /// Governs how long Foca will remember an identity as being
     /// Down.
     ///
-    /// A high value is recommended to avoid confusing cluster
-    /// members with partial joins. If in doubt use a high multiplier
-    /// over the probe period, like `10 * probe_period`.
+    /// It's recommended to have very high values here, in the order
+    /// of hours or longer.
+    ///
+    /// Identities that opt-in on auto-rejoining don't need to worry
+    /// about this value being high: this setting only prevents nodes
+    /// using the exact same identity from joining the cluster.
+    ///
+    /// If you choose to use a small duration here (maybe you can't
+    /// enable auto-rejoin, maybe you'd like to reduce the (small)
+    /// increase in memory usage that a high value here may lead to),
+    /// keep a close eye on [`crate::Foca::updates_backlog`]: large
+    /// numbers higher than the number of nodes in the cluster are a
+    /// strong sign that this configuration should be set to a higher
+    /// value.
+    ///
+    /// See [`crate::Identity::renew`].
     pub remove_down_after: Duration,
 
     /// The maximum packet size Foca will produce AND consume.
@@ -177,7 +190,7 @@ impl Config {
             max_transmissions: NonZeroU8::new(10).unwrap(),
 
             suspect_to_down_after: Duration::from_secs(3),
-            remove_down_after: Duration::from_secs(120),
+            remove_down_after: DEFAULT_REMOVE_DOWN_AFTER,
 
             max_packet_size: NonZeroUsize::new(1400).unwrap(),
 
@@ -216,7 +229,7 @@ impl Config {
             max_transmissions: Self::compute_max_tx(cluster_size),
 
             suspect_to_down_after: Self::suspicion_duration(cluster_size, period, 4.0),
-            remove_down_after: Duration::from_secs(120),
+            remove_down_after: DEFAULT_REMOVE_DOWN_AFTER,
 
             max_packet_size: NonZeroUsize::new(1400).unwrap(),
 
@@ -252,7 +265,7 @@ impl Config {
             max_transmissions: Self::compute_max_tx(cluster_size),
 
             suspect_to_down_after: Self::suspicion_duration(cluster_size, period, 6.0),
-            remove_down_after: Duration::from_secs(120),
+            remove_down_after: DEFAULT_REMOVE_DOWN_AFTER,
 
             max_packet_size: NonZeroUsize::new(1400).unwrap(),
 
@@ -298,6 +311,8 @@ impl Config {
         Duration::from_secs_f64(secs)
     }
 }
+
+const DEFAULT_REMOVE_DOWN_AFTER: Duration = Duration::from_secs(60 * 60 * 24); // 24h
 
 #[cfg(test)]
 mod tests {
