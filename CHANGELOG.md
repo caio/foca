@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **BREAKING**: `Config::remove_down_after` has been increated to
+  24h. The previous default value of 2 minutes was still too small
+  and would lead to unreasonably large updates backlog on large
+  clusters.
 - Performance/Bugfix: now foca doesn't allocate when preparing a
   message to be sent
 
