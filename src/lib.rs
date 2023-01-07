@@ -1195,15 +1195,32 @@ where
             message,
         };
 
+        // XXX this looks very backwards. it's done as such to be able to
+        //     reuse the buffer without having to do significant changes
+        //     to the Codec trait or the existing code. With some effort,
+        //     send_buf could simply be a Vec<u8>
+        // XXX We split_off() here and by the end we unsplit().
+        //     This must be done for every return point in send_message
+        self.send_buf.clear();
         let mut buf = self
             .send_buf
-            .split()
+            .split_off(0)
             .limit(self.config.max_packet_size.get());
+        debug_assert_eq!(
+            buf.get_ref().capacity(),
+            self.config.max_packet_size.get(),
+            "send_buf lost capacity, would trigger unnecessary allocs"
+        );
 
-        self.codec
+        if let Err(err) = self
+            .codec
             .encode_header(&header, &mut buf)
             .map_err(anyhow::Error::msg)
-            .map_err(Error::Encode)?;
+            .map_err(Error::Encode)
+        {
+            self.send_buf.unsplit(buf.into_inner());
+            return Err(err);
+        }
 
         let (needs_piggyback, only_active_members) = match header.message {
             // Announce/TurnUndead packets contain nothing but the header
@@ -1285,6 +1302,9 @@ where
         tracing::debug!("Message sent");
 
         runtime.send_to(dst, &data);
+
+        // absorb the buf into send_buf so we can reuse its capacity
+        self.send_buf.unsplit(data);
         Ok(())
     }
 

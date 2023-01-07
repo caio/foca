@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Performance/Bugfix: now foca doesn't allocate when preparing a
+  message to be sent
+
 ## v0.8.0 - 2022-12-31
 
 - Bugfix: foca would send garbage at the end of the payload when
