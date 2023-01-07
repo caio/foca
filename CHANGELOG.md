@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.9.0 - 2023-01-07
 
 - **BREAKING**: `iter_members` now yields an iterator of `Member`
   structs, previously if would yield `Member::id`. This allows
@@ -9,7 +9,7 @@
 - **BREAKING**: `Config::remove_down_after` has been increated to
   24h. The previous default value of 2 minutes was still too small
   and would lead to unreasonably large updates backlog on large
-  clusters.
+  clusters. See: https://github.com/caio/foca/issues/19
 - Performance/Bugfix: now foca doesn't allocate when preparing a
   message to be sent
 
