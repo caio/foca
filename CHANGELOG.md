@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **BREAKING**: `iter_members` now yields an iterator of `Member`
+  structs, previously if would yield `Member::id`. This allows
+  users to bootstrap a foca instance with existing cluster state
+  by feeding its output directly to `Foca::apply_many`
 - **BREAKING**: `Config::remove_down_after` has been increated to
   24h. The previous default value of 2 minutes was still too small
   and would lead to unreasonably large updates backlog on large

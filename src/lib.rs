@@ -275,8 +275,8 @@ where
     }
 
     /// Iterate over the currently active cluster members.
-    pub fn iter_members(&self) -> impl Iterator<Item = &T> {
-        self.members.iter_active().map(|member| member.id())
+    pub fn iter_members(&self) -> impl Iterator<Item = &Member<T>> {
+        self.members.iter_active()
     }
 
     /// Returns the number of active members in the cluster.
@@ -1909,7 +1909,11 @@ mod tests {
         // 2 active members from the updates + the member the sent
         // the payload
         assert_eq!(3, foca.num_members());
-        let mut members = foca.iter_members().cloned().collect::<Vec<_>>();
+        let mut members = foca
+            .iter_members()
+            .map(Member::id)
+            .cloned()
+            .collect::<Vec<_>>();
         members.sort_unstable();
         assert_eq!(vec![ID::new(2), ID::new(3), ID::new(4)], members);
 
@@ -2335,7 +2339,7 @@ mod tests {
         assert_eq!(Ok(()), foca.handle_data(&encode(data), &mut runtime));
         // So we should've successfully joined
         assert_eq!(1, foca.num_members());
-        assert!(foca.iter_members().any(|member| member == &src_id));
+        assert!(foca.iter_members().any(|member| member.id() == &src_id));
     }
 
     #[test]
@@ -2537,6 +2541,7 @@ mod tests {
         #[allow(clippy::needless_collect)]
         let updates = foca
             .iter_members()
+            .map(Member::id)
             .cloned()
             .map(Member::down)
             .collect::<Vec<_>>();
@@ -2904,7 +2909,7 @@ mod tests {
         expect_notification!(runtime, Notification::MemberDown(two));
         assert_eq!(1, foca_one.num_members());
         assert!(
-            foca_one.iter_members().all(|id| id != &two),
+            foca_one.iter_members().all(|m| m.id() != &two),
             "foca_two shouldn't be in the member list anymore"
         );
 
@@ -2923,7 +2928,7 @@ mod tests {
         );
         assert_eq!(1, foca_one.num_members());
         assert!(
-            foca_one.iter_members().any(|id| id == &three),
+            foca_one.iter_members().any(|m| m.id() == &three),
             "foca_three should have recovered"
         );
 
