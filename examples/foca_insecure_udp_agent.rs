@@ -5,6 +5,12 @@ use std::{
     sync::Arc, time::Duration,
 };
 
+use tracing_subscriber::{
+    filter::{EnvFilter, LevelFilter},
+    fmt,
+    prelude::*,
+};
+
 use bytes::{BufMut, Bytes, BytesMut};
 use clap::{App, Arg};
 use rand::{rngs::StdRng, SeedableRng};
@@ -72,7 +78,18 @@ impl CliParams {
         let filename = matches
             .value_of("filename")
             .map(String::from)
-            .unwrap_or_else(|| format!("foca_cluster_members.{}.txt", rand::random::<u64>()));
+            .unwrap_or_else(|| {
+                // default to $TEMP_DIR/foca_cluster_members.{$RAND}.txt
+                String::from(
+                    std::env::temp_dir()
+                        .join(format!(
+                            "foca_cluster_members.{}.txt",
+                            rand::random::<u64>()
+                        ))
+                        .to_str()
+                        .unwrap(),
+                )
+            });
 
         Self {
             bind_addr,
@@ -94,7 +111,11 @@ struct ID {
 // output cuter
 impl std::fmt::Debug for ID {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.debug_tuple("ID").field(&self.addr).finish()
+        formatter
+            .debug_tuple("ID")
+            .field(&self.addr)
+            .field(&self.bump)
+            .finish()
     }
 }
 
@@ -264,15 +285,16 @@ fn do_the_file_replace_dance<'a>(
 async fn main() -> Result<(), anyhow::Error> {
     let params = CliParams::new();
 
-    // It's really confusing how fmt().init() and fmt::init()
-    // behave differently, but hey...
-    // When RUST_LOG is unset, default to Level::INFO
-    if std::env::var("RUST_LOG").is_err() {
-        tracing_subscriber::fmt().init();
-    } else {
-        // Else use whatever it is set to, which defaults to Level::ERROR
-        tracing_subscriber::fmt::init();
-    }
+    // Configured via RUST_LOG environment variable
+    // See https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html
+    tracing_subscriber::registry()
+        .with(fmt::Layer::default().compact())
+        .with(
+            EnvFilter::builder()
+                .with_default_directive(LevelFilter::INFO.into())
+                .from_env_lossy(),
+        )
+        .init();
 
     tracing::info!(?params, "Started");
 
@@ -284,7 +306,14 @@ async fn main() -> Result<(), anyhow::Error> {
     } = params;
 
     let rng = StdRng::from_entropy();
-    let config = Config::simple();
+    let config = {
+        let mut c = Config::simple();
+        // With this setting you can suspend (^Z) one process,
+        // wait for it the member to be declared down then resume
+        // it (fg) and foca should recover by itself
+        c.notify_down_members = true;
+        c
+    };
 
     let buf_len = config.max_packet_size.get();
     let mut recv_buf = vec![0u8; buf_len];
@@ -382,13 +411,12 @@ async fn main() -> Result<(), anyhow::Error> {
             let mut active_list_has_changed = false;
             while let Some(notification) = runtime.notifications.pop() {
                 match notification {
-                    Notification::MemberUp(id) => {
-                        tracing::info!(?id, "Member Up");
-                        active_list_has_changed |= members.add_member(id)
-                    }
+                    Notification::MemberUp(id) => active_list_has_changed |= members.add_member(id),
                     Notification::MemberDown(id) => {
-                        tracing::info!(?id, "Member Down");
                         active_list_has_changed |= members.remove_member(id)
+                    }
+                    Notification::Idle => {
+                        tracing::info!("cluster empty");
                     }
 
                     other => {
