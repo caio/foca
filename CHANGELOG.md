@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.10.0 - 2023-01-13
 
 - Traces now include useful information even when running with less
   verbose level
