@@ -489,19 +489,7 @@ where
             return Err(Error::DataTooBig);
         }
 
-        if let Some(broadcast) = self
-            .broadcast_handler
-            .receive_item(data)
-            .map_err(anyhow::Error::msg)
-            .map_err(Error::CustomBroadcast)?
-        {
-            #[cfg(feature = "tracing")]
-            tracing::debug!("new item received");
-            self.custom_broadcasts
-                .add_or_replace(broadcast, self.config.max_transmissions.get().into());
-        }
-
-        Ok(())
+        self.handle_custom_broadcasts(data)
     }
 
     /// React to a previously scheduled timer event.
