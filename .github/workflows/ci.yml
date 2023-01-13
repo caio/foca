@@ -4,7 +4,7 @@ name: Continuous Integration
 
 jobs:
   check:
-    name: Cargo check
+    name: Testsuite with default (zero) features
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -15,7 +15,7 @@ jobs:
           override: true
       - uses: actions-rs/cargo@v1
         with:
-          command: check
+          command: test
 
   test:
     name: Testsuite with all features
@@ -97,7 +97,7 @@ jobs:
           args: --all-features -- -D warnings
 
   features:
-    name: Features Powerset
+    name: Features Powerset Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -109,4 +109,4 @@ jobs:
       - name: Install cargo-hack
         run: cargo install cargo-hack
       - name: Run checks
-        run: cargo hack check --feature-powerset --no-dev-deps
+        run: cargo hack test --feature-powerset
