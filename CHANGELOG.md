@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Traces now include useful information even when running with less
+  verbose level
 - Bugfix: albeit rare, foca could end up choosing an identity with
   the same prefix for the indirect probe cycle, leading to a confusing
   error in the logs of the target about receiving a message from

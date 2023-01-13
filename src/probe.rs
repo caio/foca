@@ -73,6 +73,7 @@ impl<T: Clone + PartialEq> Probe<T> {
         }
     }
 
+    #[cfg(any(feature = "tracing", test))]
     pub fn target(&self) -> Option<&T> {
         self.direct.as_ref().map(|probed| probed.id())
     }
