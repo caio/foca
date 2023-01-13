@@ -538,7 +538,7 @@ where
                     self.config.num_indirect_probes.get(),
                     &mut self.member_buf,
                     &mut self.rng,
-                    |candidate| Some(candidate) != self.probe.target(),
+                    |candidate| candidate != &probed_id && !candidate.has_same_prefix(&probed_id),
                 );
 
                 #[cfg(feature = "tracing")]

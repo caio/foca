@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Bugfix: albeit rare, foca could end up choosing an identity with
+  the same prefix for the indirect probe cycle, leading to a confusing
+  error in the logs of the target about receiving a message from
+  itself
+
 ## v0.9.0 - 2023-01-07
 
 - **BREAKING**: `iter_members` now yields an iterator of `Member`
