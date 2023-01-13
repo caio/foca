@@ -2240,9 +2240,9 @@ mod tests {
             foca.handle_data(
                 &encode((
                     Header {
-                        src: ID::new(1),
+                        src: ID::new(2),
                         src_incarnation: 0,
-                        dst: ID::new(2),
+                        dst: ID::new(1),
                         message: Message::Announce
                     },
                     Vec::from([Member::alive(ID::new(3))])
