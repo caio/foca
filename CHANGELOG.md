@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.10.1 - 2023-02-26
+
+- Foca now always randomizes the list of members it sends when replying
+  to announce messages. Previously this shuffling would happen
+  periodically, so a fast announce rate would end up seeing the same set
+  of members for a while.
+  See: https://github.com/caio/foca/issues/22
+
 ## v0.10.0 - 2023-01-13
 
 - Traces now include useful information even when running with less
