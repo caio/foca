@@ -1198,6 +1198,19 @@ where
         runtime.notify(Notification::Active);
     }
 
+    #[inline]
+    fn estimate_feed_capacity(&self, remaining: usize) -> usize {
+        // We're can't be precise here: not only we don't control how things
+        // are being encoded, identities may have variable length too
+        // So we'll just do some very rough estimation just to find an upper
+        // bound.
+        // Header contains 2 identities + message::feed + incarnation(u16)
+        // so header_len / 2 is good enough for identity_len
+        let identity_len = { self.config.max_packet_size.get().saturating_sub(remaining) / 2 };
+        // and we always answer at least 5, in case the estimation is bonkers
+        usize::max(remaining / identity_len, 5)
+    }
+
     fn send_message(
         &mut self,
         dst: T,
@@ -1273,13 +1286,20 @@ where
             let mut num_items = 0;
 
             if only_active_members {
-                for member in self
-                    .members
-                    .iter_active()
-                    .filter(|member| member.id() != &dst)
-                {
+                self.member_buf.clear();
+                self.members.choose_active_members(
+                    // Done in order to prevent copying and sorting a large
+                    // set of members just to not use them at all because
+                    // they don't fit the remaining buffer
+                    self.estimate_feed_capacity(buf.remaining_mut()),
+                    &mut self.member_buf,
+                    &mut self.rng,
+                    |member| member != &dst,
+                );
+
+                while let Some(chosen) = self.member_buf.pop() {
                     let pos = buf.get_ref().len();
-                    if let Err(_ignored) = self.codec.encode_member(member, &mut buf) {
+                    if let Err(_ignored) = self.codec.encode_member(&chosen, &mut buf) {
                         // encoding the member might have advanced the cursor
                         // of the buffer before yielding the error
                         // this resets it to the last known valid position
@@ -3687,5 +3707,41 @@ mod tests {
         // and foca_two should be able to read it just fine
         // (originally would fail with BroadcastsDisabledError)
         assert_eq!(Ok(()), foca_two.handle_data(&data, &mut runtime));
+    }
+
+    #[test]
+    fn feed_fits_as_many_as_it_can() {
+        // We prepare a foca cluster with a bunch of live members
+        let mut foca = Foca::new(ID::new(1), config(), rng(), codec());
+        let mut runtime = InMemoryRuntime::new();
+        let cluster = (2u8..=u8::MAX)
+            .map(|id| Member::alive(ID::new(id)))
+            .collect::<Vec<_>>();
+
+        assert_eq!(Ok(()), foca.apply_many(cluster.into_iter(), &mut runtime));
+        assert_eq!(foca.num_members(), usize::from(u8::MAX - 1));
+
+        // So when we send it an announce message
+        let msg = encode((
+            Header {
+                src: ID::new(2),
+                src_incarnation: Incarnation::default(),
+                dst: ID::new(1),
+                message: Message::Announce,
+            },
+            Vec::default(),
+        ));
+        assert_eq!(Ok(()), foca.handle_data(&msg, &mut runtime));
+
+        // We get a feed back with a large (>10, the min from estimation)
+        // number of members
+        let (header, feed_data) = decode(
+            runtime
+                .take_data(ID::new(2))
+                .expect("foca_one reply for foca_two"),
+        );
+        assert_eq!(Message::Feed, header.message);
+
+        assert!(feed_data.len() > 200);
     }
 }
