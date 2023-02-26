@@ -1865,18 +1865,24 @@ mod tests {
             .take_data(one)
             .expect("Should have a message for foca_one");
 
-        let (header, updates) = decode(feed_data);
+        let (header, mut updates) = decode(feed_data);
 
         assert_eq!(header.message, Message::Feed);
         assert_eq!(2, updates.len());
-        assert_eq!(
-            members
-                .iter()
-                .cloned()
-                .filter(|m| m.is_active())
-                .collect::<Vec<_>>(),
-            updates
-        );
+
+        // here we check that updates contains the active members
+        // from the `members` vec. so we sort both by id then
+        // compare
+        let mut active = members
+            .iter()
+            .cloned()
+            .filter(|m| m.is_active())
+            .collect::<Vec<_>>();
+        active.sort_by_key(|m| *m.id());
+
+        updates.sort_by_key(|m| *m.id());
+
+        assert_eq!(active, updates);
     }
 
     #[test]
