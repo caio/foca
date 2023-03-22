@@ -77,7 +77,7 @@ use crate::{
 pub use crate::{
     broadcast::{BroadcastHandler, Invalidates},
     codec::Codec,
-    config::Config,
+    config::{Config, PeriodicParams},
     error::Error,
     identity::Identity,
     member::{Incarnation, Member, State},
