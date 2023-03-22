@@ -1,6 +1,6 @@
 [package]
 name = "foca"
-version = "0.10.1"
+version = "0.11.0"
 authors = ["Caio <contact@caio.co>"]
 edition = "2021"
 license = "MPL-2.0"

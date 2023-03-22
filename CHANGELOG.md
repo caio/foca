@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.11.0 - 2023-03-22
+
+- config::PeriodicParams is now exposed correctly so users can setup
+  periodic tasks without relying on and mutating the result from
+  `Config::new_{wan,lan}`
+  See: https://github.com/caio/foca/issues/24
+
 ## v0.10.1 - 2023-02-26
 
 - Foca now always randomizes the list of members it sends when replying
