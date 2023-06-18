@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.12.0 - 2023-06-18
+
+- **CRITICAL BUGFIX**: uses of the functionality to notify down members
+  introduced on v0.6.0 could end up in a situation with a seemingly
+  endless flood of Message::TurnUndead payloads.
+  Upgrade is highly recommended.
+  See: https://github.com/caio/foca/issues/25
+
 ## v0.11.0 - 2023-03-22
 
 - config::PeriodicParams is now exposed correctly so users can setup
