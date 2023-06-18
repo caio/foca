@@ -806,6 +806,19 @@ where
             #[cfg(feature = "tracing")]
             tracing::debug!("Discarded payload: Inactive sender");
 
+            // When the sender is inactive, we opt to not trust anything
+            // in their updates payload since the info is likely stale or
+            // untrustworthy
+            // However, if they consider our identity as down they'll never
+            // learn that we think they are down since our payload is
+            // untrustworthy from their perspective
+            // So we handle TurnUndead here, otherwise the nodes will be
+            // spamming each other with this message until enough time passes
+            // that foca forgets the down memer (`Config::remove_down_after`)
+            if message == Message::TurnUndead {
+                self.handle_self_update(Incarnation::default(), State::Down, &mut runtime)?
+            }
+
             if self.config.notify_down_members {
                 #[cfg(feature = "tracing")]
                 tracing::info!("Sender is considered down, sending notification message");
@@ -3743,5 +3756,50 @@ mod tests {
         assert_eq!(Message::Feed, header.message);
 
         assert!(feed_data.len() > 200);
+    }
+
+    #[test]
+    fn reacts_to_turnundead_even_if_sender_is_down() {
+        // Given a foca ID=1
+        let id_one = ID::new(1).rejoinable();
+        // configured to notify members of their down state
+        let config = {
+            let mut c = config();
+            c.notify_down_members = true;
+            c
+        };
+        let mut foca = Foca::new(id_one, config, rng(), codec());
+        let mut runtime = InMemoryRuntime::new();
+        // that thinks ID=2 is down;
+        assert_eq!(Ok(()), foca.apply(Member::down(ID::new(2)), &mut runtime));
+
+        // And a TurnUndead message from ID=2
+        let msg = encode((
+            Header {
+                src: ID::new(2),
+                src_incarnation: Incarnation::default(),
+                dst: ID::new(1),
+                message: Message::TurnUndead,
+            },
+            Vec::default(),
+        ));
+
+        // When foca handles the message
+        assert_eq!(Ok(()), foca.handle_data(&msg, &mut runtime));
+
+        // It should change its identity
+        assert_ne!(foca.identity(), &id_one);
+
+        // And reply to ID=2 with a TurnUndead saying that it's down
+        let (header, _feed) = decode(
+            runtime
+                .take_data(ID::new(2))
+                .expect("foca_one reply for foca_two"),
+        );
+        assert_eq!(Message::TurnUndead, header.message);
+        assert_ne!(
+            id_one, header.src,
+            "message should be crafted with the new/renewed id"
+        );
     }
 }
