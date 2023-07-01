@@ -1383,22 +1383,18 @@ where
     ) -> Result<()> {
         match state {
             State::Suspect => {
-                match self.incarnation.cmp(&incarnation) {
+                let increase_incarnation = match self.incarnation.cmp(&incarnation) {
                     // This can happen when a member received an update about
                     // someone else suspecting us but hasn't received our
-                    // refutal yet. We can ignore it.
-                    // There is a chance that it may lead to us being declared
-                    // down due to this if our new incarnation doesn't reach
-                    // them, but we shouldn't try to bump our incarnation again
-                    // else we risk entering a game of counting
+                    // refutal yet. There's no need to increase our incarnation
                     Ordering::Greater => {
                         #[cfg(feature = "tracing")]
                         tracing::debug!(
                             ?self.incarnation,
                             suspected = incarnation,
-                            "Ignored suspicion about old incarnation",
+                            "Received suspicion about old incarnation",
                         );
-                        return Ok(());
+                        false
                     }
 
                     // Unexpected: someone suspects our identity but thinks we were
@@ -1414,11 +1410,12 @@ where
                             suspected = incarnation,
                             "Suspicion on incarnation higher than current",
                         );
+                        true
                     }
 
                     // The usual case: our current incarnation is being suspected,
-                    // so we need to bump ours.
-                    Ordering::Equal => {}
+                    // so we need to increase it
+                    Ordering::Equal => true,
                 };
 
                 let incarnation = Incarnation::max(incarnation, self.incarnation);
@@ -1434,13 +1431,20 @@ where
                     return Ok(());
                 }
 
-                // XXX Overzealous checking
-                self.incarnation = incarnation.saturating_add(1);
+                if increase_incarnation {
+                    // XXX Overzealous checking
+                    self.incarnation = incarnation.saturating_add(1);
+                }
 
                 // We do NOT add ourselves as Alive to the updates buffer
                 // because it's unnecessary: by bumping our incarnation *any*
                 // message we send will be interpreted as a broadcast update
                 // See: `tests::message_from_aware_suspect_refutes_suspicion`
+                //
+                // But since the cluster is chatting about us possibly being
+                // down, we'll send a few updates around in order to help
+                // disseminate the refutation
+                self.gossip(runtime)?;
             }
             State::Alive => {
                 // The cluster is talking about our liveness. Nothing to do.
@@ -2435,6 +2439,50 @@ mod tests {
         assert_eq!(ConnectionState::Undead, foca.connection_state());
 
         Ok(())
+    }
+
+    #[test]
+    fn incarnation_does_not_increase_for_stale_suspicion() {
+        let mut foca = Foca::new(ID::new(1), config(), rng(), codec());
+        let mut runtime = InMemoryRuntime::new();
+
+        let suspected_incarnation = 10;
+        let update = Member::new(ID::new(1), suspected_incarnation, State::Suspect);
+        // First time the suspicion is fresh, and foca refures normally
+        assert_eq!(Ok(()), foca.apply(update.clone(), &mut runtime));
+        let current_incarnation = foca.incarnation();
+        assert!(current_incarnation > suspected_incarnation);
+
+        // But receiving the same update shouldn't make it
+        // increase again
+        assert_eq!(Ok(()), foca.apply(update, &mut runtime));
+        assert_eq!(current_incarnation, foca.incarnation());
+    }
+
+    #[test]
+    fn gossips_when_being_suspected() {
+        let mut foca = Foca::new(ID::new(1), config(), rng(), codec());
+        let mut runtime = InMemoryRuntime::new();
+        // just one peer in the cluster, for simplificy's sake
+        assert_eq!(Ok(()), foca.apply(Member::alive(ID::new(2)), &mut runtime));
+
+        // stale or not, receiving an update suspecting our
+        // indentity should trigger a gossip round to our
+        // peers
+        for _round in 0..5 {
+            runtime.clear();
+            assert_eq!(
+                Ok(()),
+                foca.apply(Member::suspect(ID::new(1)), &mut runtime)
+            );
+
+            let (header, _updates) = decode(
+                runtime
+                    .take_data(ID::new(2))
+                    .expect("Should have sent a message to ID=2"),
+            );
+            assert_eq!(Message::Gossip, header.message);
+        }
     }
 
     #[test]
