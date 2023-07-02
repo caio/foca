@@ -1,7 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
-use core::time::Duration;
+use core::{cmp::Ordering, time::Duration};
 
 use crate::{Identity, Incarnation};
 
@@ -99,6 +99,13 @@ pub enum Notification<T> {
 
 /// Timer is an event that's scheduled by a [`Runtime`]. You won't need
 /// to construct or understand these, just ensure a timely delivery.
+///
+/// **Warning:** This type implements [`Ord`] to facilitate correcting
+/// for out-of-order delivery due to the runtime lagging for whatever
+/// reason. It assumes the events being sorted come from the same foca
+/// instance and are not being persisted after being handled
+/// via [`crate::Foca::handle_timer`]. Any use outside of this scenario
+/// will likely lead to unintended consequences.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Timer<T> {
@@ -126,10 +133,6 @@ pub enum Timer<T> {
         token: TimerToken,
     },
 
-    /// Forgets about dead member `T`, allowing them to join the
-    /// cluster again with the same identity.
-    RemoveDown(T),
-
     /// Sends a [`crate::Message::Announce`] to randomly chosen members as
     /// specified by [`crate::Config::periodic_announce`]
     PeriodicAnnounce(TimerToken),
@@ -137,6 +140,42 @@ pub enum Timer<T> {
     /// Sends a [`crate::Message::Gossip`] to randomly chosen members as
     /// specified by [`crate::Config::periodic_gossip`]
     PeriodicGossip(TimerToken),
+
+    /// Forgets about dead member `T`, allowing them to join the
+    /// cluster again with the same identity.
+    RemoveDown(T),
+}
+
+impl<T> Timer<T> {
+    fn seq(&self) -> u8 {
+        match self {
+            Timer::SendIndirectProbe {
+                probed_id: _,
+                token: _,
+            } => 0,
+            Timer::ProbeRandomMember(_) => 1,
+            Timer::ChangeSuspectToDown {
+                member_id: _,
+                incarnation: _,
+                token: _,
+            } => 2,
+            Timer::PeriodicAnnounce(_) => 3,
+            Timer::PeriodicGossip(_) => 4,
+            Timer::RemoveDown(_) => 5,
+        }
+    }
+}
+
+impl<T: PartialEq> core::cmp::PartialOrd for Timer<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.seq().partial_cmp(&other.seq())
+    }
+}
+
+impl<T: Eq> core::cmp::Ord for Timer<T> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.partial_cmp(other).expect("total ordering")
+    }
 }
 
 /// TimerToken is simply a bookkeeping mechanism to try and prevent
@@ -148,3 +187,48 @@ pub enum Timer<T> {
 ///
 /// Similar in spirit to [`crate::ProbeNumber`].
 pub type TimerToken = u8;
+
+#[cfg(test)]
+mod tests {
+    use super::Timer;
+
+    #[test]
+    fn timers_sort() {
+        // What we really care about is SendIndirectProbe
+        // appearing before ProbeRandomMember,
+        // Foca tolerates other events in arbitrary order
+        // without emitting scary errors / traces.
+        let mut out_of_order = alloc::vec![
+            Timer::<u8>::RemoveDown(0),
+            Timer::<u8>::ChangeSuspectToDown {
+                member_id: 0,
+                incarnation: 0,
+                token: 0,
+            },
+            Timer::<u8>::ProbeRandomMember(0),
+            Timer::<u8>::SendIndirectProbe {
+                probed_id: 0,
+                token: 0
+            },
+        ];
+
+        out_of_order.sort_unstable();
+
+        assert_eq!(
+            alloc::vec![
+                Timer::<u8>::SendIndirectProbe {
+                    probed_id: 0,
+                    token: 0
+                },
+                Timer::<u8>::ProbeRandomMember(0),
+                Timer::<u8>::ChangeSuspectToDown {
+                    member_id: 0,
+                    incarnation: 0,
+                    token: 0,
+                },
+                Timer::<u8>::RemoveDown(0),
+            ],
+            out_of_order
+        )
+    }
+}
