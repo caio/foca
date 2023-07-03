@@ -982,7 +982,14 @@ where
     }
 
     fn probe_random_member(&mut self, mut runtime: impl Runtime<T>) -> Result<()> {
+        // NEEDSWORK: A codec error may leave us in a weird state where
+        //            foca talks to the cluster normally but never
+        //            probes their peers. It's, however, unlikely to
+        //            happen as there are many attempts at
+        //            encoding/decoding members before we start probing
         debug_assert_eq!(self.connection_state, ConnectionState::Connected);
+
+        let mut probe_was_incomplete = false;
         if !self.probe.validate() {
             #[cfg(feature = "tracing")]
             tracing::warn!(
@@ -992,11 +999,7 @@ where
             // Probe has invalid state. We'll reset and submit another timer
             // so that foca can recover from the issue gracefully
             self.probe.clear();
-            runtime.submit_after(
-                Timer::ProbeRandomMember(self.timer_token),
-                self.config.probe_period,
-            );
-            return Err(Error::IncompleteProbeCycle);
+            probe_was_incomplete = true;
         }
 
         if let Some(failed) = self.probe.take_failed() {
@@ -1081,7 +1084,11 @@ where
             self.config.probe_period,
         );
 
-        Ok(())
+        if probe_was_incomplete {
+            Err(Error::IncompleteProbeCycle)
+        } else {
+            Ok(())
+        }
     }
 
     // shortcut for apply + handle
@@ -3465,6 +3472,8 @@ mod tests {
         // sequencing should submit `_send_indirect_probe`
         let (mut foca, _probed, _send_indirect_probe) = craft_probing_foca(2, config());
         let mut runtime = InMemoryRuntime::new();
+        let old_probeno = foca.probe().probe_number();
+
         // ... but we'll manually craft a ProbeRandomMember event instead
         // to trigger the validation failure
         assert_eq!(
@@ -3472,13 +3481,28 @@ mod tests {
             foca.handle_timer(Timer::ProbeRandomMember(foca.timer_token()), &mut runtime)
         );
 
-        // This situation should lead to two things happening:
-        // 1. the probe state should become valid again
-        assert!(foca.probe().validate(), "didn't recover probe state");
-        // 2. should've scheduled a new probe
+        // And since there are still active members in the cluster, a *new*
+        // probe should've started
+        assert_ne!(foca.probe().probe_number(), old_probeno);
+
+        // Which means we should've scheduled a new probe to start
         assert!(
             runtime
                 .find_scheduling(|t| matches!(t, Timer::ProbeRandomMember(_)))
+                .is_some(),
+            "didn't submit a new probe event"
+        );
+
+        // And the deadline for starting the indirect probe cycle
+        assert!(
+            runtime
+                .find_scheduling(|t| matches!(
+                    t,
+                    Timer::SendIndirectProbe {
+                        probed_id: _,
+                        token: _,
+                    }
+                ))
                 .is_some(),
             "didn't submit a new probe event"
         );
