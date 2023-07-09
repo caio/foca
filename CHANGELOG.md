@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.13.0 - 2023-07-09
+
+- Foca will now gossip upon receiving messages that flag their identity
+  as suspect
+- Foca now resumes probing more quickly when recoving from an incorrect
+  sequence of Timer events
+- The Timer enum now has a very simple Ord implementation to facilitate
+  dealing with out-of-order delivery. Sorting a slice of Timer events
+  should leave them in the order they should be handled, starting from
+  the first index.
+  See: https://github.com/caio/foca/issues/26
+
 ## v0.12.0 - 2023-06-18
 
 - **CRITICAL BUGFIX**: uses of the functionality to notify down members
