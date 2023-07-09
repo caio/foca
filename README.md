@@ -158,8 +158,8 @@ Protocol][1]
 [2]: https://github.com/hashicorp/memberlist
 [bincode]: https://github.com/bincode-org/bincode
 [postcard]: https://github.com/jamesmunns/postcard
-[tracing]: https://tracing.rs/
-[dir]: https://tracing.rs/tracing_subscriber/struct.envfilter#directives
+[tracing]: https://docs.rs/tracing/latest/tracing/
+[dir]: https://docs.rs/tracing-subscriber/0.3.17/tracing_subscriber/filter/struct.EnvFilter.html#directives
 
 # License
 
