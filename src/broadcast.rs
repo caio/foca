@@ -106,17 +106,17 @@ impl<T> Broadcasts<T>
 where
     T: Invalidates + AsRef<[u8]>,
 {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             storage: Vec::new(),
         }
     }
 
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.storage.len()
     }
 
-    pub fn add_or_replace(&mut self, value: T, max_tx: usize) {
+    pub(crate) fn add_or_replace(&mut self, value: T, max_tx: usize) {
         let new_node = Entry {
             remaining_tx: max_tx,
             value,
@@ -141,7 +141,7 @@ where
         self.storage.insert(position, new_node);
     }
 
-    pub fn fill(&mut self, mut buffer: impl BufMut, max_items: usize) -> usize {
+    pub(crate) fn fill(&mut self, mut buffer: impl BufMut, max_items: usize) -> usize {
         if self.storage.is_empty() {
             return 0;
         }
@@ -201,14 +201,14 @@ where
         num_taken
     }
 
-    pub fn is_sorted(&self) -> bool {
+    pub(crate) fn is_sorted(&self) -> bool {
         // Future: `is_sorted` from https://github.com/rust-lang/rfcs/pull/2351
         self.storage[..]
             .windows(2)
             .all(|w| w[0].remaining_tx <= w[1].remaining_tx)
     }
 
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.storage.is_empty()
     }
 }

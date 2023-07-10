@@ -8,10 +8,10 @@ use bytes::{Buf, BufMut};
 use crate::{Header, Member};
 
 #[cfg(feature = "bincode-codec")]
-pub mod bincode_impl;
+pub(crate) mod bincode_impl;
 
 #[cfg(feature = "postcard-codec")]
-pub mod postcard_impl;
+pub(crate) mod postcard_impl;
 
 /// A Codec is responsible to encoding and decoding the data that
 /// is sent between cluster members.

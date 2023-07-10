@@ -42,7 +42,7 @@
 //!
 #![forbid(unsafe_code)]
 #![no_std]
-#![deny(missing_docs)]
+#![deny(missing_docs, unreachable_pub)]
 #![deny(rustdoc::broken_intra_doc_links)]
 
 extern crate alloc;
@@ -1555,7 +1555,7 @@ where
         self.incarnation
     }
 
-    pub fn probe(&self) -> &Probe<T> {
+    pub(crate) fn probe(&self) -> &Probe<T> {
         &self.probe
     }
 

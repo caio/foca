@@ -141,17 +141,17 @@ pub(crate) struct Members<T> {
 
 #[cfg(test)]
 impl<T> Members<T> {
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.inner.len()
     }
 }
 
 impl<T: PartialEq + Clone> Members<T> {
-    pub fn num_active(&self) -> usize {
+    pub(crate) fn num_active(&self) -> usize {
         self.num_active
     }
 
-    pub fn new(inner: Vec<Member<T>>) -> Self {
+    pub(crate) fn new(inner: Vec<Member<T>>) -> Self {
         // XXX This doesn't prevent someone initializing with
         //     duplicated members... Not a problem (yet?) since
         //     inner is always empty outside of tests
@@ -166,7 +166,7 @@ impl<T: PartialEq + Clone> Members<T> {
 
     // Next member that's considered active
     // Chosen at random (shuffle + round-robin)
-    pub fn next(&mut self, mut rng: impl Rng) -> Option<&Member<T>> {
+    pub(crate) fn next(&mut self, mut rng: impl Rng) -> Option<&Member<T>> {
         // Round-robin with a shuffle at the end
         if self.cursor >= self.inner.len() {
             self.inner.shuffle(&mut rng);
@@ -215,7 +215,7 @@ impl<T: PartialEq + Clone> Members<T> {
     ///     a high chance that every member will be *pinged* periodically
     ///     and using the same logic for other "pick random member"
     ///     mechanisms might break the math.
-    pub fn choose_active_members<F>(
+    pub(crate) fn choose_active_members<F>(
         &self,
         wanted: usize,
         output: &mut Vec<Member<T>>,
@@ -246,7 +246,7 @@ impl<T: PartialEq + Clone> Members<T> {
         }
     }
 
-    pub fn remove_if_down(&mut self, id: &T) -> Option<Member<T>> {
+    pub(crate) fn remove_if_down(&mut self, id: &T) -> Option<Member<T>> {
         let position = self
             .inner
             .iter()
@@ -255,11 +255,11 @@ impl<T: PartialEq + Clone> Members<T> {
         position.map(|pos| self.inner.swap_remove(pos))
     }
 
-    pub fn iter_active(&self) -> impl Iterator<Item = &Member<T>> {
+    pub(crate) fn iter_active(&self) -> impl Iterator<Item = &Member<T>> {
         self.inner.iter().filter(|m| m.is_active())
     }
 
-    pub fn apply_existing_if<F: Fn(&Member<T>) -> bool>(
+    pub(crate) fn apply_existing_if<F: Fn(&Member<T>) -> bool>(
         &mut self,
         update: Member<T>,
         condition: F,
@@ -300,7 +300,7 @@ impl<T: PartialEq + Clone> Members<T> {
         }
     }
 
-    pub fn apply(&mut self, update: Member<T>, mut rng: impl Rng) -> ApplySummary {
+    pub(crate) fn apply(&mut self, update: Member<T>, mut rng: impl Rng) -> ApplySummary {
         self.apply_existing_if(update.clone(), |_member| true)
             .unwrap_or_else(|| {
                 // Unknown member, we'll register it
@@ -333,9 +333,9 @@ impl<T: PartialEq + Clone> Members<T> {
 #[derive(Debug, Clone, PartialEq)]
 #[must_use]
 pub(crate) struct ApplySummary {
-    pub is_active_now: bool,
-    pub apply_successful: bool,
-    pub changed_active_set: bool,
+    pub(crate) is_active_now: bool,
+    pub(crate) apply_successful: bool,
+    pub(crate) changed_active_set: bool,
 }
 
 #[cfg(test)]

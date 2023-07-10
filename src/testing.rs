@@ -9,7 +9,7 @@ use bytes::{Buf, BufMut, Bytes};
 use crate::{Codec, Header, Identity, Member, Message, Notification, Runtime, State, Timer};
 
 #[derive(Debug, Clone, Copy, PartialOrd, Ord)]
-pub struct ID {
+pub(crate) struct ID {
     id: u8,
     bump: u8,
     rejoinable: bool,
@@ -25,11 +25,11 @@ impl PartialEq for ID {
 impl Eq for ID {}
 
 impl ID {
-    pub fn new(id: u8) -> Self {
+    pub(crate) fn new(id: u8) -> Self {
         ID::new_with_bump(id, 0)
     }
 
-    pub fn new_with_bump(id: u8, bump: u8) -> Self {
+    pub(crate) fn new_with_bump(id: u8, bump: u8) -> Self {
         Self {
             id,
             bump,
@@ -37,12 +37,12 @@ impl ID {
         }
     }
 
-    pub fn rejoinable(mut self) -> Self {
+    pub(crate) fn rejoinable(mut self) -> Self {
         self.rejoinable = true;
         self
     }
 
-    pub fn serialize_into(&self, mut buf: impl BufMut) -> Result<(), BadCodecError> {
+    pub(crate) fn serialize_into(&self, mut buf: impl BufMut) -> Result<(), BadCodecError> {
         if buf.remaining_mut() >= 2 {
             buf.put_u8(self.id);
             buf.put_u8(self.bump);
@@ -52,7 +52,7 @@ impl ID {
         }
     }
 
-    pub fn deserialize_from(mut buf: impl Buf) -> Result<Self, BadCodecError> {
+    pub(crate) fn deserialize_from(mut buf: impl Buf) -> Result<Self, BadCodecError> {
         if buf.remaining() >= 2 {
             Ok(Self {
                 id: buf.get_u8(),
@@ -80,10 +80,10 @@ impl Identity for ID {
     }
 }
 
-pub struct BadCodec;
+pub(crate) struct BadCodec;
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum BadCodecError {
+pub(crate) enum BadCodecError {
     BufTooSmall,
     BadMessageID(u8),
     BadStateByte(u8),
@@ -339,14 +339,14 @@ impl Codec<ID> for BadCodec {
 }
 
 #[derive(Debug, Clone)]
-pub struct InMemoryRuntime {
+pub(crate) struct InMemoryRuntime {
     notifications: Vec<Notification<ID>>,
     to_send: Vec<(ID, Bytes)>,
     to_schedule: Vec<(Timer<ID>, Duration)>,
 }
 
 impl InMemoryRuntime {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             notifications: Vec::new(),
             to_send: Vec::new(),
@@ -354,24 +354,27 @@ impl InMemoryRuntime {
         }
     }
 
-    pub fn clear(&mut self) {
+    pub(crate) fn clear(&mut self) {
         self.notifications.clear();
         self.to_send.clear();
         self.to_schedule.clear();
     }
 
-    pub fn take_all_data(&mut self) -> Vec<(ID, Bytes)> {
+    pub(crate) fn take_all_data(&mut self) -> Vec<(ID, Bytes)> {
         core::mem::take(&mut self.to_send)
     }
 
-    pub fn take_data(&mut self, dst: ID) -> Option<Bytes> {
+    pub(crate) fn take_data(&mut self, dst: ID) -> Option<Bytes> {
         let position = self.to_send.iter().position(|(to, _data)| to == &dst)?;
 
         let taken = self.to_send.swap_remove(position);
         Some(taken.1)
     }
 
-    pub fn take_notification(&mut self, wanted: Notification<ID>) -> Option<Notification<ID>> {
+    pub(crate) fn take_notification(
+        &mut self,
+        wanted: Notification<ID>,
+    ) -> Option<Notification<ID>> {
         let position = self
             .notifications
             .iter()
@@ -381,7 +384,7 @@ impl InMemoryRuntime {
         Some(taken)
     }
 
-    pub fn take_scheduling(&mut self, timer: Timer<ID>) -> Option<Duration> {
+    pub(crate) fn take_scheduling(&mut self, timer: Timer<ID>) -> Option<Duration> {
         let position = self
             .to_schedule
             .iter()
@@ -391,7 +394,7 @@ impl InMemoryRuntime {
         Some(taken.1)
     }
 
-    pub fn find_scheduling<F>(&self, predicate: F) -> Option<&Timer<ID>>
+    pub(crate) fn find_scheduling<F>(&self, predicate: F) -> Option<&Timer<ID>>
     where
         F: Fn(&Timer<ID>) -> bool,
     {
@@ -418,10 +421,10 @@ impl Runtime<ID> for InMemoryRuntime {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct TrivialID(u64);
+pub(crate) struct TrivialID(u64);
 
 #[cfg(any(feature = "bincode-codec", feature = "postcard-codec"))]
-pub fn verify_codec_roundtrip<C: Codec<TrivialID>>(mut codec: C) -> Result<(), C::Error> {
+pub(crate) fn verify_codec_roundtrip<C: Codec<TrivialID>>(mut codec: C) -> Result<(), C::Error> {
     let mut buf = Vec::new();
 
     let payload = Header {

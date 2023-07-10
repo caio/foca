@@ -8,7 +8,7 @@ use crate::{member::Member, ProbeNumber};
 
 // FIXME This whole thing is ugly AF :(
 
-pub struct Probe<T> {
+pub(crate) struct Probe<T> {
     direct: Option<Member<T>>,
     indirect: Vec<T>,
     probe_number: ProbeNumber,
@@ -20,7 +20,7 @@ pub struct Probe<T> {
 }
 
 impl<T: Clone + PartialEq> Probe<T> {
-    pub fn new(indirect: Vec<T>) -> Self {
+    pub(crate) fn new(indirect: Vec<T>) -> Self {
         Self {
             indirect,
             direct: None,
@@ -32,7 +32,7 @@ impl<T: Clone + PartialEq> Probe<T> {
     }
 
     #[must_use]
-    pub fn start(&mut self, target: Member<T>) -> ProbeNumber {
+    pub(crate) fn start(&mut self, target: Member<T>) -> ProbeNumber {
         self.clear();
         self.direct = Some(target);
         self.probe_number = self.probe_number.wrapping_add(1);
@@ -43,7 +43,7 @@ impl<T: Clone + PartialEq> Probe<T> {
         self.probe_number
     }
 
-    pub fn clear(&mut self) {
+    pub(crate) fn clear(&mut self) {
         self.direct = None;
         self.indirect.clear();
         self.direct_ack_ok = false;
@@ -52,11 +52,11 @@ impl<T: Clone + PartialEq> Probe<T> {
         // do NOT reset probe_number
     }
 
-    pub fn mark_indirect_probe_stage_reached(&mut self) {
+    pub(crate) fn mark_indirect_probe_stage_reached(&mut self) {
         self.reached_indirect_probe_stage = true;
     }
 
-    pub fn validate(&self) -> bool {
+    pub(crate) fn validate(&self) -> bool {
         // A probe that hasn't been started is
         // valid
         self.direct.is_none()
@@ -65,7 +65,7 @@ impl<T: Clone + PartialEq> Probe<T> {
             || self.reached_indirect_probe_stage
     }
 
-    pub fn take_failed(&mut self) -> Option<Member<T>> {
+    pub(crate) fn take_failed(&mut self) -> Option<Member<T>> {
         if !self.succeeded() {
             self.direct.take()
         } else {
@@ -74,22 +74,22 @@ impl<T: Clone + PartialEq> Probe<T> {
     }
 
     #[cfg(any(feature = "tracing", test))]
-    pub fn target(&self) -> Option<&T> {
+    pub(crate) fn target(&self) -> Option<&T> {
         self.direct.as_ref().map(|probed| probed.id())
     }
 
-    pub fn is_probing(&self, id: &T) -> bool {
+    pub(crate) fn is_probing(&self, id: &T) -> bool {
         self.direct
             .as_ref()
             .map(|probed| probed.id() == id)
             .unwrap_or(false)
     }
 
-    pub fn succeeded(&self) -> bool {
+    pub(crate) fn succeeded(&self) -> bool {
         self.direct_ack_ok || self.indirect_ack_count > 0
     }
 
-    pub fn receive_ack(&mut self, from: &T, probeno: ProbeNumber) -> bool {
+    pub(crate) fn receive_ack(&mut self, from: &T, probeno: ProbeNumber) -> bool {
         if probeno == self.probe_number
             && self
                 .direct
@@ -104,7 +104,7 @@ impl<T: Clone + PartialEq> Probe<T> {
         }
     }
 
-    pub fn expect_indirect_ack(&mut self, from: T) {
+    pub(crate) fn expect_indirect_ack(&mut self, from: T) {
         debug_assert!(self
             .direct
             .as_ref()
@@ -113,7 +113,7 @@ impl<T: Clone + PartialEq> Probe<T> {
         self.indirect.push(from);
     }
 
-    pub fn receive_indirect_ack(&mut self, from: &T, probeno: ProbeNumber) -> bool {
+    pub(crate) fn receive_indirect_ack(&mut self, from: &T, probeno: ProbeNumber) -> bool {
         if self.probe_number != probeno {
             return false;
         }
