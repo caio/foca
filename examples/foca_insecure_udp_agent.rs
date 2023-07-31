@@ -1,8 +1,15 @@
 /* Any copyright is dedicated to the Public Domain.
  * https://creativecommons.org/publicdomain/zero/1.0/ */
 use std::{
-    collections::HashMap, fs::File, io::Write, net::SocketAddr, path::Path, str::FromStr,
-    sync::Arc, time::Duration,
+    cmp::Reverse,
+    collections::{BinaryHeap, HashMap},
+    fs::File,
+    io::Write,
+    net::SocketAddr,
+    path::Path,
+    str::FromStr,
+    sync::Arc,
+    time::Duration,
 };
 
 use tracing_subscriber::{
@@ -14,7 +21,11 @@ use tracing_subscriber::{
 use bytes::{BufMut, Bytes, BytesMut};
 use clap::{App, Arg};
 use rand::{rngs::StdRng, SeedableRng};
-use tokio::{net::UdpSocket, sync::mpsc};
+use tokio::{
+    net::UdpSocket,
+    sync::mpsc,
+    time::{sleep_until, Instant},
+};
 
 use foca::{Config, Foca, Identity, Notification, PostcardCodec, Runtime, Timer};
 
@@ -339,21 +350,15 @@ async fn main() -> Result<(), anyhow::Error> {
         }
     });
 
-    // We'll also launch a task to manage Foca. Since there are timers
-    // involved, one simple way to do it is unifying the input:
-    enum Input<T> {
-        Event(Timer<T>),
-        Data(Bytes),
-        Announce(T),
-    }
-    // And communicating via channels
+    // We'll launch a task to manage foca, responsible for handling
+    // received data, events and user input
     let (tx_foca, mut rx_foca) = mpsc::channel(100);
-    // Another alternative would be putting a Lock around Foca, but
-    // yours truly likes to hide behind (the lock inside) channels
-    // instead.
+    // One specialized task to deal with timer events where it sleeps
+    // until the necessary time to submit the events it receives
+    let scheduler = launch_scheduler(tx_foca.clone()).await;
+
     let mut runtime = AccumulatingRuntime::new();
     let mut members = Members::new();
-    let tx_foca_copy = tx_foca.clone();
     tokio::spawn(async move {
         while let Some(input) = rx_foca.recv().await {
             debug_assert_eq!(0, runtime.backlog());
@@ -370,7 +375,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 // And we'd decide what to do with each error, but Foca
                 // is pretty tolerant so we just log them and pretend
                 // all is fine
-                eprintln!("Ignored Error: {}", error);
+                tracing::error!(?error, "Ignored error");
             }
 
             // Now we react to what happened.
@@ -384,12 +389,11 @@ async fn main() -> Result<(), anyhow::Error> {
             }
 
             // Then schedule what needs to be scheduled
+            let now = Instant::now();
             while let Some((delay, event)) = runtime.to_schedule.pop() {
-                let own_input_handle = tx_foca_copy.clone();
-                tokio::spawn(async move {
-                    tokio::time::sleep(delay).await;
-                    let _ignored_send_error = own_input_handle.send(Input::Event(event)).await;
-                });
+                scheduler
+                    .send((now + delay, event))
+                    .expect("error handling");
             }
 
             // And finally react to notifications.
@@ -441,10 +445,126 @@ async fn main() -> Result<(), anyhow::Error> {
     let mut databuf = BytesMut::new();
     loop {
         let (len, _from_addr) = socket.recv_from(&mut recv_buf).await?;
-        // Accordinly, we would undo everything that's done prior to
+        // Accordingly, we would undo everything that's done prior to
         // sending: decompress, decrypt, remove the envelope
         databuf.put_slice(&recv_buf[..len]);
         // And simply forward it to foca
         let _ignored_send_error = tx_foca.send(Input::Data(databuf.split().freeze())).await;
+    }
+}
+
+enum Input<T> {
+    Data(Bytes),
+    Announce(T),
+    Event(Timer<T>),
+}
+
+async fn launch_scheduler(
+    timer_tx: mpsc::Sender<Input<ID>>,
+) -> mpsc::UnboundedSender<(Instant, Timer<ID>)> {
+    // Unbounded so we don't worry about deadlocks: this is intended to
+    // be used alongside the receiving end of `timer_tx`, so we don't
+    // want to end up in a situation where we're handling `timer_rx` and
+    // need to submit data to the scheduler but its buffer is full
+    // Since timer events are unlikely to ever go wild, this is a better
+    // approach than having a large mostly unused buffer whislt still not
+    // being sure we're deadlock safe.
+    // Since the `timer_tx` handler is the only thing that submits events
+    // the buffer growth is effectivelly bound
+    let (tx, mut rx) = mpsc::unbounded_channel::<(Instant, Timer<ID>)>();
+
+    let mut queue = TimerQueue::new();
+    tokio::spawn(async move {
+        'handler: loop {
+            let now = Instant::now();
+
+            macro_rules! submit_event {
+                ($event:expr) => {
+                    if let Err(err) = timer_tx.send(Input::Event($event)).await {
+                        tracing::error!(
+                            ?err,
+                            "Error submitting timer event. Shutting down timer task"
+                        );
+                        rx.close();
+                        break 'handler;
+                    }
+                };
+                ($when:expr, $event:expr) => {
+                    if $when < now {
+                        submit_event!($event);
+                    } else {
+                        queue.enqueue($when, $event);
+                    }
+                };
+            }
+
+            // XXX Maybe watch for lange `now - _ins` deltas
+            while let Some((_ins, event)) = queue.pop_next(&now) {
+                submit_event!(event);
+            }
+
+            // If the queue is not empty, we have a deadline: can only
+            // wait until we reach `wake_at`
+            if let Some(wake_at) = queue.next_deadline() {
+                // wait for input OR sleep
+                let sleep_fut = sleep_until(*wake_at);
+                let recv_fut = rx.recv();
+
+                tokio::select! {
+                    _ = sleep_fut => {
+                        // woke up after deadline, time to handle events
+                        continue 'handler;
+                    },
+                    maybe = recv_fut => {
+                        if maybe.is_none() {
+                            // channel closed
+                            break 'handler;
+                        }
+                        let (when, event) = maybe.expect("checked for None already");
+                        submit_event!(when, event);
+                    }
+                };
+            } else {
+                // Otherwise we'll wait until someone submits a new deadline
+                if let Some((when, event)) = rx.recv().await {
+                    submit_event!(when, event);
+                } else {
+                    // channel closed
+                    break 'handler;
+                }
+            }
+        }
+    });
+
+    tx
+}
+
+// Just a (Instant, Timer) min-heap
+struct TimerQueue(BinaryHeap<Reverse<(Instant, Timer<ID>)>>);
+
+impl TimerQueue {
+    fn new() -> Self {
+        Self(Default::default())
+    }
+
+    fn next_deadline(&self) -> Option<&Instant> {
+        self.0.peek().map(|Reverse((deadline, _))| deadline)
+    }
+
+    fn enqueue(&mut self, deadline: Instant, event: Timer<ID>) {
+        self.0.push(Reverse((deadline, event)));
+    }
+
+    fn pop_next(&mut self, deadline: &Instant) -> Option<(Instant, Timer<ID>)> {
+        if self
+            .0
+            .peek()
+            .map(|Reverse((when, _))| when < deadline)
+            .unwrap_or(false)
+        {
+            self.0.pop().map(|Reverse(inner)| inner)
+        } else {
+            None
+        }
     }
 }
