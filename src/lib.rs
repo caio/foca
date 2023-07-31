@@ -524,7 +524,7 @@ where
                 if self.probe.succeeded() {
                     // We received an Ack already, nothing else to do
                     #[cfg(feature = "tracing")]
-                    tracing::trace!(?probed_id, "Probe succeeded, no need for indirect cycle");
+                    tracing::debug!(?probed_id, "Probe succeeded, no need for indirect cycle");
                     return Ok(());
                 }
 
