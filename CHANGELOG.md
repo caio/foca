@@ -1,5 +1,10 @@
 # Changelog
 
+## UNRELEASED
+
+- Foca now only emits DEBUG and TRACE level traces when using the
+  `tracing` feature
+
 ## v0.13.0 - 2023-07-09
 
 - Foca will now gossip upon receiving messages that flag their identity

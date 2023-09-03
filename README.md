@@ -78,7 +78,9 @@ Every feature is optional. The `default` set will always be empty.
 * `std`: Adds `std::error::Error` support, implements `foca::Identity`
   for `std::net::SocketAddr*` and exposes `Config::new_lan` and
   `Config::new_wan`
-* `tracing`: Instruments Foca using the [tracing][] crate.
+* `tracing`: Instruments Foca using the [tracing][] crate. High-level
+  protocol interactions are emited as `DEBUG` traces, more details can
+  be exposed with the `TRACE` level. No other levels are emitted.
 * `serde`: Derives `Serialize` and `Deserialize` for Foca's public
   types.
 * `bincode-codec`: Provides `BincodeCodec`, a serde-based codec type

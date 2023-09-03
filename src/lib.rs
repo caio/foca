@@ -254,7 +254,7 @@ where
             self.reset();
 
             #[cfg(feature = "tracing")]
-            tracing::info!(?self, ?previous_id, "changed identity");
+            tracing::debug!(?self, ?previous_id, "changed identity");
 
             // If our previous identity wasn't known as Down already,
             // we'll declare it ourselves
@@ -326,7 +326,7 @@ where
                 //      declares A down; nonstop
                 #[cfg(feature = "tracing")]
                 if update.is_active() {
-                    tracing::warn!(
+                    tracing::trace!(
                         ?self,
                         ?update,
                         "update about identity with same prefix as ours, declaring it down"
@@ -498,14 +498,14 @@ where
     /// See [`Runtime::submit_after`].
     pub fn handle_timer(&mut self, event: Timer<T>, mut runtime: impl Runtime<T>) -> Result<()> {
         #[cfg(feature = "tracing")]
-        let _span = tracing::error_span!("handle_timer", ?event).entered();
+        let _span = tracing::trace_span!("handle_timer", ?event).entered();
         match event {
             Timer::SendIndirectProbe { probed_id, token } => {
                 // Changing identities in the middle of the probe cycle may
                 // naturally lead to this.
                 if token != self.timer_token {
                     #[cfg(feature = "tracing")]
-                    tracing::debug!("Invalid timer token");
+                    tracing::trace!("Invalid timer token");
                     return Ok(());
                 }
 
@@ -517,14 +517,14 @@ where
 
                 if !self.probe.is_probing(&probed_id) {
                     #[cfg(feature = "tracing")]
-                    tracing::warn!(?probed_id, "SendIndirectProbe: Member not being probed");
+                    tracing::trace!(?probed_id, "Member not being probed");
                     return Ok(());
                 }
 
                 if self.probe.succeeded() {
                     // We received an Ack already, nothing else to do
                     #[cfg(feature = "tracing")]
-                    tracing::debug!(?probed_id, "Probe succeeded, no need for indirect cycle");
+                    tracing::trace!(?probed_id, "Probe succeeded, no need for indirect cycle");
                     return Ok(());
                 }
 
@@ -539,7 +539,7 @@ where
                 #[cfg(feature = "tracing")]
                 tracing::debug!(
                     ?probed_id,
-                    "Member didn't respond to ping, starting indirect probe cycle"
+                    "Member didn't respond to ping in time, starting indirect probe cycle"
                 );
 
                 while let Some(chosen) = self.member_buf.pop() {
@@ -586,9 +586,6 @@ where
                             // it can react accordingly
                             self.send_message(member_id, Message::TurnUndead, runtime)?;
                         }
-                    } else {
-                        #[cfg(feature = "tracing")]
-                        tracing::debug!(?member_id, "Member not found");
                     }
                 }
 
@@ -601,10 +598,7 @@ where
                 )]
                 if let Some(_removed) = self.members.remove_if_down(&down) {
                     #[cfg(feature = "tracing")]
-                    tracing::debug!(?down, "Member removed");
-                } else {
-                    #[cfg(feature = "tracing")]
-                    tracing::debug!(?down, "Member not found / not down");
+                    tracing::trace!(?down, "Member removed");
                 }
 
                 Ok(())
@@ -707,7 +701,7 @@ where
             Err(Error::InvalidConfig)
         } else {
             #[cfg(feature = "tracing")]
-            tracing::debug!(?config, "Configuration changed");
+            tracing::trace!(?config, "Configuration changed");
 
             self.config = config;
             Ok(())
@@ -721,7 +715,7 @@ where
     /// you are listening to a socket address).
     pub fn handle_data(&mut self, mut data: &[u8], mut runtime: impl Runtime<T>) -> Result<()> {
         #[cfg(feature = "tracing")]
-        let span = tracing::error_span!(
+        let span = tracing::trace_span!(
             "handle_data",
             len = data.len(),
             header = tracing::field::Empty,
@@ -743,8 +737,6 @@ where
         span.record("header", tracing::field::debug(&header));
 
         if header.src == self.identity {
-            #[cfg(feature = "tracing")]
-            tracing::warn!(?self, "sender has same identity as ours");
             return Err(Error::DataFromOurselves);
         }
 
@@ -752,15 +744,12 @@ where
         // A single trailing byte or a Announce payload with _any_
         // data is bad
         if remaining == 1 || (header.message == Message::Announce && remaining > 0) {
-            #[cfg(feature = "tracing")]
-            tracing::warn!("rejected malformed payload");
-
             return Err(Error::MalformedPacket);
         }
 
         if !self.accept_payload(&header) {
             #[cfg(feature = "tracing")]
-            tracing::debug!("payload not accepted");
+            tracing::trace!("Payload not accepted");
 
             return Ok(());
         }
@@ -804,7 +793,7 @@ where
         // list gets reaped.
         if !sender_is_active {
             #[cfg(feature = "tracing")]
-            tracing::debug!("Discarded payload: Inactive sender");
+            tracing::trace!("Discarded payload: Inactive sender");
 
             // When the sender is inactive, we opt to not trust anything
             // in their updates payload since the info is likely stale or
@@ -820,8 +809,6 @@ where
             }
 
             if self.config.notify_down_members {
-                #[cfg(feature = "tracing")]
-                tracing::info!("Sender is considered down, sending notification message");
                 self.send_message(src, Message::TurnUndead, runtime)?;
             }
 
@@ -868,7 +855,7 @@ where
                     // the proccess and `fg` back after a while).
                     // Might be interesting to keep an eye on.
                     #[cfg(feature = "tracing")]
-                    tracing::warn!(
+                    tracing::trace!(
                         current_probe_number = self.probe.probe_number(),
                         "Unexpected Ack"
                     );
@@ -941,13 +928,13 @@ where
                     );
                 } else {
                     #[cfg(feature = "tracing")]
-                    tracing::warn!("Unexpected ForwardedAck sender");
+                    tracing::trace!("Unexpected ForwardedAck sender");
                 }
             }
             Message::Announce => self.send_message(src, Message::Feed, runtime)?,
             Message::TurnUndead => {
                 #[cfg(feature = "tracing")]
-                tracing::warn!("The cluster thinks we're down");
+                tracing::debug!("The cluster thinks we're down");
 
                 self.handle_self_update(Incarnation::default(), State::Down, runtime)?
             }
@@ -992,7 +979,7 @@ where
         let mut probe_was_incomplete = false;
         if !self.probe.validate() {
             #[cfg(feature = "tracing")]
-            tracing::warn!(
+            tracing::trace!(
                 probed_id = ?self.probe.target(),
                 "Recovering: Probe cycle didn't complete correctly"
             );
@@ -1032,7 +1019,7 @@ where
                     // member was already set as State::Suspect
                     #[cfg(feature = "tracing")]
                     if summary.apply_successful {
-                        tracing::info!(
+                        tracing::debug!(
                             member_id = ?failed.id(),
                             timeout = ?self.config.suspect_to_down_after,
                             "Member failed probe, will declare it down if it doesn't react"
@@ -1047,12 +1034,6 @@ where
                         self.config.suspect_to_down_after,
                     );
                 }
-            } else {
-                #[cfg(feature = "tracing")]
-                tracing::error!(
-                    member_id = ?failed.id(),
-                    "Member failed probe but doesn't exist"
-                );
             }
         }
 
@@ -1061,7 +1042,7 @@ where
             let probe_number = self.probe.start(member.clone());
 
             #[cfg(feature = "tracing")]
-            tracing::debug!(?member_id, "Probing member");
+            tracing::debug!(?member_id, "Probe start");
 
             self.send_message(member_id.clone(), Message::Ping(probe_number), &mut runtime)?;
 
@@ -1076,7 +1057,7 @@ where
             // Should never happen... Reaching here is gated by being
             // online, which requires having at least one active member
             #[cfg(feature = "tracing")]
-            tracing::error!("Expected to find an active member to probe");
+            tracing::debug!("Expected to find an active member to probe");
         }
 
         runtime.submit_after(
@@ -1110,7 +1091,7 @@ where
 
         if summary.apply_successful {
             #[cfg(feature = "tracing")]
-            tracing::debug!(?update, ?summary, "Update applied");
+            tracing::trace!(?update, ?summary, "Update applied");
 
             // Cluster state changed, start broadcasting it
             let data = self.serialize_member(update)?;
@@ -1132,12 +1113,11 @@ where
         if summary.changed_active_set {
             if summary.is_active_now {
                 #[cfg(feature = "tracing")]
-                tracing::info!(member_id=?id, "Member up");
-
+                tracing::debug!(member_id=?id, "Member up");
                 runtime.notify(Notification::MemberUp(id));
             } else {
                 #[cfg(feature = "tracing")]
-                tracing::info!(member_id=?id, "Member down");
+                tracing::debug!(member_id=?id, "Member down");
                 runtime.notify(Notification::MemberDown(id));
             }
         }
@@ -1148,7 +1128,7 @@ where
     fn handle_custom_broadcasts(&mut self, mut data: impl Buf) -> Result<()> {
         #[cfg(feature = "tracing")]
         if data.has_remaining() {
-            tracing::debug!(len = data.remaining(), "handle_custom_broadcasts");
+            tracing::trace!(len = data.remaining(), "handle_custom_broadcasts");
         }
         while data.has_remaining() {
             if let Some(broadcast) = self
@@ -1158,7 +1138,7 @@ where
                 .map_err(Error::CustomBroadcast)?
             {
                 #[cfg(feature = "tracing")]
-                tracing::info!("received broadcast item");
+                tracing::trace!("received broadcast item");
 
                 self.custom_broadcasts
                     .add_or_replace(broadcast, self.config.max_transmissions.get().into());
@@ -1245,7 +1225,7 @@ where
         };
 
         #[cfg(feature = "tracing")]
-        let span = tracing::error_span!(
+        let span = tracing::trace_span!(
             "send_message",
             ?header,
             num_updates = tracing::field::Empty,
@@ -1363,7 +1343,7 @@ where
         span.record("len", &data.len());
 
         #[cfg(feature = "tracing")]
-        tracing::debug!("Message sent");
+        tracing::trace!("Message sent");
 
         runtime.send_to(dst, &data);
 
@@ -1396,7 +1376,7 @@ where
                     // refutal yet. There's no need to increase our incarnation
                     Ordering::Greater => {
                         #[cfg(feature = "tracing")]
-                        tracing::debug!(
+                        tracing::trace!(
                             ?self.incarnation,
                             suspected = incarnation,
                             "Received suspicion about old incarnation",
@@ -1412,7 +1392,7 @@ where
                     // We'll emit a warning and then refute the suspicion normally
                     Ordering::Less => {
                         #[cfg(feature = "tracing")]
-                        tracing::warn!(
+                        tracing::debug!(
                             ?self.incarnation,
                             suspected = incarnation,
                             "Suspicion on incarnation higher than current",
@@ -1432,7 +1412,7 @@ where
                 if incarnation == Incarnation::MAX {
                     if !self.attempt_rejoin(&mut runtime)? {
                         #[cfg(feature = "tracing")]
-                        tracing::warn!("Inactive: reached Incarnation::MAX",);
+                        tracing::debug!("Inactive: reached Incarnation::MAX",);
                         self.become_undead(runtime);
                     }
                     return Ok(());
@@ -1471,7 +1451,7 @@ where
         if let Some(new_identity) = self.identity.renew() {
             if self.identity == new_identity {
                 #[cfg(feature = "tracing")]
-                tracing::warn!("Rejoin failure: Identity::renew() returned same id",);
+                tracing::debug!("Rejoin failure: Identity::renew() returned same id",);
                 Ok(false)
             } else {
                 self.change_identity(new_identity.clone(), &mut runtime)?;
