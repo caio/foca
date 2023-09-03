@@ -1,9 +1,15 @@
 # Changelog
 
-## UNRELEASED
+## v0.14.0 - 2023-09-03
 
+- **BREAKING** Custom broadcast handlers now know which member sent the
+  data they're handling to facilitate anti-entropy usecases.
+  See: https://github.com/caio/foca/issues/28
 - Foca now only emits DEBUG and TRACE level traces when using the
   `tracing` feature
+  See: https://github.com/caio/foca/issues/30
+- The `foca_insecure_udp_agent` example now contains a more robust timer
+  handler able to tolerate arbitrary runtime lags
 
 ## v0.13.0 - 2023-07-09
 
