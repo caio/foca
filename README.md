@@ -122,32 +122,6 @@ own implementation. Since then I did take a non-thorough look at it:
   I want introduce something along those lines in the future, likely
   by pulling `Config` into Foca as a trait implementation.
 
-
-## Future
-
-Foca is very focused on doing almost nothing, so it's likely that
-some things will end up on separate crates. But, in no particular
-order, I want to:
-
-* Provide a more plug-and-play experience, closer to what memberlist
-  gives out of the box.
-
-* Make Foca run as a library for a higher level language. I'm not
-  even sure I can take it that far, so sounds like fun!
-
-* Deliver a (re)usable simulator. Right now I've been yolo-coding
-  one just to give me more confidence on what's implemented right
-  now, but what I want is something that you can: Slap your own
-  identity, codec and configuration; Set network parameters like
-  TTL, loss rate, bandwidth; And then simulate production behavior
-  (rolling restarts, partitions, etc) while watching convergence
-  stats. This is a ridiculous amount of work.
-
-* Actually demonstrate a running Foca with `no_std` constraints; I
-  don't have access to devices to play with at the moment, so
-  it's been difficult to find motivation to pursue this.
-
-
 # References
 
 * The paper [SWIM: Scalable Weakly-consistent Infection-style Process Group Membership
