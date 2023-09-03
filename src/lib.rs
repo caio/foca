@@ -490,7 +490,7 @@ where
             return Err(Error::DataTooBig);
         }
 
-        self.handle_custom_broadcasts(data)
+        self.handle_custom_broadcasts(data, None)
     }
 
     /// React to a previously scheduled timer event.
@@ -831,14 +831,14 @@ where
         self.member_buf = updates;
 
         // Right now there might still be some data left to read in the
-        // buffer (custom broadcasts).
-        // We choose to defer handling them until after we're done
-        // with the core of the protocol.
+        // buffer (custom broadcasts). We'll handle those before we
+        // react to the message we just received
+        let custom_broadcasts_result = self.handle_custom_broadcasts(data, Some(&src));
 
         // If we're not connected (anymore), we can't react to a message
-        // So we just finish consuming the data
+        // so there's nothing more to do
         if self.connection_state != ConnectionState::Connected {
-            return self.handle_custom_broadcasts(data);
+            return custom_broadcasts_result;
         }
 
         match message {
@@ -942,7 +942,7 @@ where
             Message::Gossip | Message::Feed | Message::Broadcast => {}
         };
 
-        self.handle_custom_broadcasts(data)
+        custom_broadcasts_result
     }
 
     fn serialize_member(&mut self, member: Member<T>) -> Result<Bytes> {
@@ -1125,7 +1125,7 @@ where
         Ok(())
     }
 
-    fn handle_custom_broadcasts(&mut self, mut data: impl Buf) -> Result<()> {
+    fn handle_custom_broadcasts(&mut self, mut data: impl Buf, sender: Option<&T>) -> Result<()> {
         #[cfg(feature = "tracing")]
         if data.has_remaining() {
             tracing::trace!(len = data.remaining(), "handle_custom_broadcasts");
@@ -1133,7 +1133,7 @@ where
         while data.has_remaining() {
             if let Some(broadcast) = self
                 .broadcast_handler
-                .receive_item(&mut data)
+                .receive_item(&mut data, sender)
                 .map_err(anyhow::Error::msg)
                 .map_err(Error::CustomBroadcast)?
             {
@@ -1499,6 +1499,7 @@ impl<T> BroadcastHandler<T> for NoCustomBroadcast {
     fn receive_item(
         &mut self,
         _data: impl Buf,
+        _sender: Option<&T>,
     ) -> core::result::Result<Option<Self::Broadcast>, Self::Error> {
         Err(BroadcastsDisabledError)
     }
@@ -3258,6 +3259,7 @@ mod tests {
             fn receive_item(
                 &mut self,
                 data: impl Buf,
+                _sender: Option<&ID>,
             ) -> core::result::Result<Option<Self::Broadcast>, Self::Error> {
                 let decoded = VersionedKey::from_bytes(data)?;
 

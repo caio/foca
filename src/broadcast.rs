@@ -29,6 +29,12 @@ pub trait BroadcastHandler<T> {
     /// Decodes a [`Self::Broadcast`] from a buffer and either discards
     /// it or tells Foca to persist and disseminate it.
     ///
+    /// `Sender` is `None` when you're adding broadcast data directly,
+    /// via [`crate::Foca::add_broadcast`], otherwise it will be the
+    /// address of the member that sent the data. Notice that Foca
+    /// doesn't track the origin of packets- if you need it you
+    /// have to add it to the data you're broadcasting.
+    ///
     /// When you receive a broadcast you have to decide whether it's
     /// new information that needs to be disseminated (`Ok(Some(...))`)
     /// or not (`Ok(None)`).
@@ -45,7 +51,11 @@ pub trait BroadcastHandler<T> {
     /// buffer and advance the cursor accordingly.
     ///
     /// Implementations may assume the data in the buffer is contiguous.
-    fn receive_item(&mut self, data: impl Buf) -> Result<Option<Self::Broadcast>, Self::Error>;
+    fn receive_item(
+        &mut self,
+        data: impl Buf,
+        sender: Option<&T>,
+    ) -> Result<Option<Self::Broadcast>, Self::Error>;
 
     /// Decides whether Foca should add broadcast data to the message
     /// it's about to send to active member `T`.

@@ -141,6 +141,7 @@ impl<T> BroadcastHandler<T> for Handler {
     fn receive_item(
         &mut self,
         data: impl bytes::Buf,
+        _sender: Option<&T>,
     ) -> Result<Option<Self::Broadcast>, Self::Error> {
         // Broadcast payload is u16-length prefixed
         if data.remaining() < 2 {
