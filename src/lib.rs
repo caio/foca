@@ -451,12 +451,11 @@ where
 
     /// Leave the cluster by declaring our own identity as down.
     ///
-    /// If there are active members, we select a few are selected
-    /// and notify them of our exit so that the cluster learns
-    /// about it quickly.
+    /// If there are active members, a few are selected and notified
+    /// of our exit so that the cluster learns about it quickly.
     ///
     /// This is the cleanest way to terminate a running Foca.
-    pub fn leave_cluster(mut self, mut runtime: impl Runtime<T>) -> Result<()> {
+    pub fn leave_cluster(&mut self, mut runtime: impl Runtime<T>) -> Result<()> {
         let data = self.serialize_member(Member::down(self.identity().clone()))?;
         self.updates.add_or_replace(
             ClusterUpdate {
