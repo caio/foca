@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.15.0 - 2023-09-04
+
+- `Foca::leave_cluster` doesn't consume self anymore, so users can keep
+  using the instance; Even rejoin the cluster if they so wish.
+  See: https://github.com/caio/foca/issues/30
+
 ## v0.14.0 - 2023-09-03
 
 - **BREAKING** Custom broadcast handlers now know which member sent the
