@@ -134,7 +134,7 @@ impl<T> Member<T> {
 }
 
 pub(crate) struct Members<T> {
-    inner: Vec<Member<T>>,
+    pub(crate) inner: Vec<Member<T>>,
     cursor: usize,
     num_active: usize,
 }

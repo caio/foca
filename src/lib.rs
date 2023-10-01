@@ -51,7 +51,7 @@ use alloc::vec::Vec;
 #[cfg(feature = "std")]
 extern crate std;
 
-use core::{cmp::Ordering, convert::TryFrom, fmt, mem};
+use core::{cmp::Ordering, convert::TryFrom, fmt, iter::ExactSizeIterator, mem};
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use rand::Rng;
@@ -286,6 +286,27 @@ where
     /// Foca method that takes `&mut self` is called in-between.
     pub fn num_members(&self) -> usize {
         self.members.num_active()
+    }
+
+    /// Iterates over the *full* membership state, including members
+    /// that have been declared down.
+    ///
+    /// This is for advanced usage, to be used in tandem with
+    /// [`Foca::apply_many`]. The main usecase for this is
+    /// state replication:
+    ///
+    /// 1. You may want to send it to another node so that it knows
+    ///    all you do; if said member sends you their state as an
+    ///    immediate reply, both states will be exactly the same.
+    ///    The reply can be a lot smaller than the full state in
+    ///    most cases, if payload size if a concern.
+    ///
+    /// 2. You might want to save the full state to disk before
+    ///    restarting a process running Foca so that you can get
+    ///    back up quickly with low risk of accepting stale
+    ///    knowledge as truthful
+    pub fn iter_membership_state(&self) -> impl Iterator<Item = &Member<T>> + ExactSizeIterator {
+        self.members.inner.iter()
     }
 
     /// Applies cluster updates to this foca instance.
