@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.16.0 - 2023-10-01
+
+- Introduce `Foca::iter_membership_state` that provides a view into the
+  whole state facilitating state replication scenarios. Previously one
+  would need to juggle `Notification::MemberDown` and
+  `Foca::iter_members` to achieve the same
+
 ## v0.15.0 - 2023-09-04
 
 - `Foca::leave_cluster` doesn't consume self anymore, so users can keep
