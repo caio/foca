@@ -120,8 +120,7 @@ impl<T> Member<T> {
                 State::Down => true,
             },
             State::Suspect => match other {
-                State::Alive => other_incarnation > self.incarnation,
-                State::Suspect => other_incarnation > self.incarnation,
+                State::Alive | State::Suspect => other_incarnation > self.incarnation,
                 State::Down => true,
             },
             State::Down => false,
@@ -207,7 +206,7 @@ impl<T: PartialEq + Clone> Members<T> {
         }
     }
 
-    /// XXX This used to be a next_members() which would make use of the
+    /// XXX This used to be a `next_members()` which would make use of the
     ///     already shuffled state and then simply advance the cursor
     ///     to trigger the next shuffle-after-round-robin that next()
     ///     does. However I'm not sure it was a good idea: the point
@@ -656,7 +655,7 @@ mod tests {
                 Some(1),
                 members.next(&mut rng).map(|m| m.id),
                 "next() should yield the same member if its the only active"
-            )
+            );
         }
     }
 

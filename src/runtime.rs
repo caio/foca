@@ -44,15 +44,15 @@ where
     R: Runtime<T>,
 {
     fn notify(&mut self, notification: Notification<T>) {
-        R::notify(self, notification)
+        R::notify(self, notification);
     }
 
     fn send_to(&mut self, to: T, data: &[u8]) {
-        R::send_to(self, to, data)
+        R::send_to(self, to, data);
     }
 
     fn submit_after(&mut self, event: Timer<T>, after: Duration) {
-        R::submit_after(self, event, after)
+        R::submit_after(self, event, after);
     }
 }
 
@@ -178,7 +178,7 @@ impl<T: Eq> core::cmp::Ord for Timer<T> {
     }
 }
 
-/// TimerToken is simply a bookkeeping mechanism to try and prevent
+/// `TimerToken` is simply a bookkeeping mechanism to try and prevent
 /// reacting to events dispatched that aren't relevant anymore.
 ///
 /// Certain interactions may cause Foca to decide to disregard every
@@ -229,6 +229,6 @@ mod tests {
                 Timer::<u8>::RemoveDown(0),
             ],
             out_of_order
-        )
+        );
     }
 }

@@ -44,6 +44,77 @@
 #![no_std]
 #![deny(missing_docs, unreachable_pub)]
 #![deny(rustdoc::broken_intra_doc_links)]
+#![warn(
+    clippy::all,
+    clippy::await_holding_lock,
+    clippy::char_lit_as_u8,
+    clippy::checked_conversions,
+    clippy::dbg_macro,
+    clippy::debug_assert_with_mut_call,
+    clippy::doc_markdown,
+    clippy::empty_enum,
+    clippy::enum_glob_use,
+    clippy::exit,
+    clippy::expl_impl_clone_on_copy,
+    clippy::explicit_deref_methods,
+    clippy::explicit_into_iter_loop,
+    clippy::fallible_impl_from,
+    clippy::filter_map_next,
+    clippy::flat_map_option,
+    clippy::float_cmp_const,
+    clippy::fn_params_excessive_bools,
+    clippy::from_iter_instead_of_collect,
+    clippy::if_let_mutex,
+    clippy::implicit_clone,
+    clippy::imprecise_flops,
+    clippy::inefficient_to_string,
+    clippy::invalid_upcast_comparisons,
+    clippy::large_digit_groups,
+    clippy::large_stack_arrays,
+    clippy::large_types_passed_by_value,
+    clippy::let_unit_value,
+    clippy::linkedlist,
+    clippy::lossy_float_literal,
+    clippy::macro_use_imports,
+    clippy::manual_ok_or,
+    clippy::map_err_ignore,
+    clippy::map_flatten,
+    clippy::map_unwrap_or,
+    clippy::match_on_vec_items,
+    clippy::match_same_arms,
+    clippy::match_wild_err_arm,
+    clippy::match_wildcard_for_single_variants,
+    clippy::mem_forget,
+    clippy::mismatched_target_os,
+    clippy::missing_enforced_import_renames,
+    clippy::mut_mut,
+    clippy::mutex_integer,
+    clippy::needless_borrow,
+    clippy::needless_continue,
+    clippy::needless_for_each,
+    clippy::option_option,
+    clippy::path_buf_push_overwrite,
+    clippy::ptr_as_ptr,
+    clippy::rc_mutex,
+    clippy::ref_option_ref,
+    clippy::rest_pat_in_fully_bound_structs,
+    clippy::same_functions_in_if_condition,
+    clippy::semicolon_if_nothing_returned,
+    clippy::single_match_else,
+    clippy::string_add_assign,
+    clippy::string_add,
+    clippy::string_lit_as_bytes,
+    clippy::string_to_string,
+    clippy::trait_duplication_in_bounds,
+    clippy::unimplemented,
+    clippy::unnested_or_patterns,
+    clippy::useless_transmute,
+    clippy::verbose_file_reads,
+    clippy::zero_sized_map_values,
+    future_incompatible,
+    nonstandard_style,
+    rust_2018_idioms
+)]
 
 extern crate alloc;
 use alloc::vec::Vec;
@@ -497,7 +568,7 @@ where
 
     /// Register some data to be broadcast along with Foca messages.
     ///
-    /// Calls into this instance's BroadcastHandler and reacts accordingly.
+    /// Calls into this instance's `BroadcastHandler` and reacts accordingly.
     pub fn add_broadcast(&mut self, data: &[u8]) -> Result<()> {
         // NOTE: Receiving B::Broadcast instead of a byte slice would make it
         //       look more convenient, however it gets in the way when
@@ -825,7 +896,7 @@ where
             // spamming each other with this message until enough time passes
             // that foca forgets the down memer (`Config::remove_down_after`)
             if message == Message::TurnUndead {
-                self.handle_self_update(Incarnation::default(), State::Down, &mut runtime)?
+                self.handle_self_update(Incarnation::default(), State::Down, &mut runtime)?;
             }
 
             if self.config.notify_down_members {
@@ -952,7 +1023,7 @@ where
                 #[cfg(feature = "tracing")]
                 tracing::debug!("The cluster thinks we're down");
 
-                self.handle_self_update(Incarnation::default(), State::Down, runtime)?
+                self.handle_self_update(Incarnation::default(), State::Down, runtime)?;
             }
             // Nothing to do. These messages do not expect any reply
             Message::Gossip | Message::Feed | Message::Broadcast => {}
@@ -1279,11 +1350,10 @@ where
 
         let (needs_piggyback, only_active_members) = match header.message {
             // Announce/TurnUndead packets contain nothing but the header
-            Message::Announce | Message::TurnUndead => (false, false),
+            // Broadcast packets stuffs only custom broadcasts
+            Message::Announce | Message::TurnUndead | Message::Broadcast => (false, false),
             // Feed packets stuff active members at the tail
             Message::Feed => (true, true),
-            // Broadcast packets stuffs only custom broadcasts
-            Message::Broadcast => (false, false),
             // Every other message stuffs cluster updates
             _ => (true, false),
         };
@@ -2275,7 +2345,7 @@ mod tests {
             },
         ];
 
-        for message in indirect_messages.into_iter() {
+        for message in indirect_messages {
             let bad_header = Header {
                 src: ID::new(2),
                 src_incarnation: 0,
@@ -2666,7 +2736,7 @@ mod tests {
 
         // The probe state should've been cleared now so that when the instance
         // resumes operation things are actually functional
-        assert!(foca.probe().validate(), "invalid probe state")
+        assert!(foca.probe().validate(), "invalid probe state");
     }
 
     #[test]
@@ -2743,7 +2813,7 @@ mod tests {
 
         let mut ping_req_dsts = Vec::new();
         let all_data = runtime.take_all_data();
-        for (to, data) in all_data.into_iter() {
+        for (to, data) in all_data {
             let (header, _updates) = decode(data);
 
             if matches!(
@@ -2808,7 +2878,7 @@ mod tests {
             "Must not accept ForwardedAck from outsider"
         );
 
-        for src in ping_req_dsts.into_iter() {
+        for src in ping_req_dsts {
             assert_eq!(
                 Ok(()),
                 foca.handle_data(
@@ -2960,7 +3030,7 @@ mod tests {
             for member in members.iter().rev() {
                 let mut foca = Foca::new(*member.id(), config(), rng(), codec());
                 foca.apply_many(members.iter().cloned(), InMemoryRuntime::new())?;
-                herd.push(foca)
+                herd.push(foca);
             }
 
             herd
@@ -3282,9 +3352,7 @@ mod tests {
                     .0
                     .get(&decoded.key())
                     // If the version we know about is smaller
-                    .map(|&version| version < decoded.version())
-                    // Or we never seen the key before
-                    .unwrap_or(true);
+                    .map_or(true, |&version| version < decoded.version());
 
                 if is_new_information {
                     self.0.insert(decoded.key(), decoded.version());

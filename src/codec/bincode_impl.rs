@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 use crate::{Codec, Header, Member};
 
-/// BincodeCodec encodes/decodes messages using [`bincode`].
+/// `BincodeCodec` encodes/decodes messages using [`bincode`].
 ///
 /// This struct simply wraps a [`bincode::Options`] type:
 ///

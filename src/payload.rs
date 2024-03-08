@@ -142,7 +142,7 @@ pub enum Message<T> {
     TurnUndead,
 }
 
-/// ProbeNumber is simply a bookkeeping mechanism to try and prevent
+/// `ProbeNumber` is simply a bookkeeping mechanism to try and prevent
 /// incorrect sequencing of protocol messages.
 ///
 /// Similar in spirit to `foca::TimerToken`.

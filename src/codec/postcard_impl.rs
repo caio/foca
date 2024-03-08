@@ -6,7 +6,7 @@ use postcard::ser_flavors::Flavor as SerFlavor;
 
 use crate::{Codec, Header, Member};
 
-/// PostcardCodec encodes/decodes packets using [`postcard`].
+/// `PostcardCodec` encodes/decodes packets using [`postcard`].
 #[derive(Debug, Clone, Copy)]
 pub struct PostcardCodec;
 

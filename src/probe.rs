@@ -79,10 +79,7 @@ impl<T: Clone + PartialEq> Probe<T> {
     }
 
     pub(crate) fn is_probing(&self, id: &T) -> bool {
-        self.direct
-            .as_ref()
-            .map(|probed| probed.id() == id)
-            .unwrap_or(false)
+        self.direct.as_ref().is_some_and(|probed| probed.id() == id)
     }
 
     pub(crate) fn succeeded(&self) -> bool {
@@ -94,8 +91,7 @@ impl<T: Clone + PartialEq> Probe<T> {
             && self
                 .direct
                 .as_ref()
-                .map(|direct| direct.id() == from)
-                .unwrap_or(false)
+                .is_some_and(|direct| direct.id() == from)
         {
             self.direct_ack_ok = true;
             true
@@ -108,8 +104,7 @@ impl<T: Clone + PartialEq> Probe<T> {
         debug_assert!(self
             .direct
             .as_ref()
-            .map(|probed| probed.id() != &from)
-            .unwrap_or(false));
+            .is_some_and(|probed| probed.id() != &from));
         self.indirect.push(from);
     }
 
