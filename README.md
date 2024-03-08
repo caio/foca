@@ -6,7 +6,7 @@ with its useful extensions (`SWIM+Inf.+Susp.`).
 
 Project:
 
-* Git Repository: https://github.com/caio/foca
+* Git Repository: https://caio.co/de/foca/
 * Issue tracker: https://github.com/caio/foca/issues
 * CI: https://github.com/caio/foca/actions/workflows/ci.yml
 * Packages: https://crates.io/crates/foca
