@@ -887,16 +887,15 @@ where
             } => {
                 if target == self.identity {
                     return Err(Error::IndirectForOurselves);
-                } else {
-                    self.send_message(
-                        target,
-                        Message::IndirectPing {
-                            origin: src,
-                            probe_number,
-                        },
-                        runtime,
-                    )?;
                 }
+                self.send_message(
+                    target,
+                    Message::IndirectPing {
+                        origin: src,
+                        probe_number,
+                    },
+                    runtime,
+                )?;
             }
             Message::IndirectPing {
                 origin,
@@ -904,16 +903,15 @@ where
             } => {
                 if origin == self.identity {
                     return Err(Error::IndirectForOurselves);
-                } else {
-                    self.send_message(
-                        src,
-                        Message::IndirectAck {
-                            target: origin,
-                            probe_number,
-                        },
-                        runtime,
-                    )?;
                 }
+                self.send_message(
+                    src,
+                    Message::IndirectAck {
+                        target: origin,
+                        probe_number,
+                    },
+                    runtime,
+                )?;
             }
             Message::IndirectAck {
                 target,
@@ -921,26 +919,24 @@ where
             } => {
                 if target == self.identity {
                     return Err(Error::IndirectForOurselves);
-                } else {
-                    self.send_message(
-                        target,
-                        Message::ForwardedAck {
-                            origin: src,
-                            probe_number,
-                        },
-                        runtime,
-                    )?;
                 }
+                self.send_message(
+                    target,
+                    Message::ForwardedAck {
+                        origin: src,
+                        probe_number,
+                    },
+                    runtime,
+                )?;
             }
             Message::ForwardedAck {
                 origin,
                 probe_number,
-            } =>
-            {
-                #[cfg_attr(not(feature = "tracing"), allow(clippy::if_same_then_else))]
+            } => {
                 if origin == self.identity {
                     return Err(Error::IndirectForOurselves);
-                } else if self.probe.receive_indirect_ack(&src, probe_number) {
+                }
+                if self.probe.receive_indirect_ack(&src, probe_number) {
                     #[cfg(feature = "tracing")]
                     tracing::debug!(
                         probed_id = ?self.probe.target(),
@@ -1359,8 +1355,7 @@ where
 
         let data = buf.into_inner();
         #[cfg(feature = "tracing")]
-        #[allow(clippy::needless_borrow)]
-        span.record("len", &data.len());
+        span.record("len", data.len());
 
         #[cfg(feature = "tracing")]
         tracing::trace!("Message sent");
@@ -1920,8 +1915,8 @@ mod tests {
         // compare
         let mut active = members
             .iter()
+            .filter(|&m| m.is_active())
             .cloned()
-            .filter(|m| m.is_active())
             .collect::<Vec<_>>();
         active.sort_by_key(|m| *m.id());
 
