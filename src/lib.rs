@@ -376,7 +376,7 @@ where
     ///    restarting a process running Foca so that you can get
     ///    back up quickly with low risk of accepting stale
     ///    knowledge as truthful
-    pub fn iter_membership_state(&self) -> impl Iterator<Item = &Member<T>> + ExactSizeIterator {
+    pub fn iter_membership_state(&self) -> impl ExactSizeIterator<Item = &Member<T>> {
         self.members.inner.iter()
     }
 

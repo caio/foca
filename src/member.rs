@@ -208,9 +208,9 @@ impl<T: PartialEq + Clone> Members<T> {
 
     /// XXX This used to be a `next_members()` which would make use of the
     ///     already shuffled state and then simply advance the cursor
-    ///     to trigger the next shuffle-after-round-robin that next()
+    ///     to trigger the next shuffle-after-round-robin that `next()`
     ///     does. However I'm not sure it was a good idea: the point
-    ///     of what next() does is giving some sort of determinism giving
+    ///     of what `next()` does is giving some sort of determinism giving
     ///     a high chance that every member will be *pinged* periodically
     ///     and using the same logic for other "pick random member"
     ///     mechanisms might break the math.
