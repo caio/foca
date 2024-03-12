@@ -12,7 +12,7 @@ use crate::{Identity, Incarnation};
 /// Implementations may react directly to it for a fully synchronous
 /// behavior or accumulate-then-drain when dispatching via fancier
 /// mechanisms like async.
-pub trait Runtime<T: Identity> {
+pub trait Runtime<T: Identity<ID>, ID: core::hash::Hash> {
     /// Whenever something changes Foca's state significantly a
     /// notification is emitted.
     ///
@@ -38,10 +38,11 @@ pub trait Runtime<T: Identity> {
 }
 
 // A mutable reference to a Runtime is a Runtime too
-impl<T, R> Runtime<T> for &mut R
+impl<T, ID, R> Runtime<T, ID> for &mut R
 where
-    T: Identity,
-    R: Runtime<T>,
+    T: Identity<ID>,
+    ID: core::hash::Hash,
+    R: Runtime<T, ID>,
 {
     fn notify(&mut self, notification: Notification<T>) {
         R::notify(self, notification);

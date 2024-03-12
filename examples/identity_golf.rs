@@ -40,7 +40,7 @@ fn main() {
         }
     }
 
-    impl Identity for FatIdentity {
+    impl Identity<SocketAddrV4> for FatIdentity {
         // We want fast rejoins, so we simply bump the extra field
         // maintaining the actual network address intact
         fn renew(&self) -> Option<Self> {
@@ -54,6 +54,10 @@ fn main() {
         // knowing our (randomized) extra field
         fn has_same_prefix(&self, other: &Self) -> bool {
             self.addr.eq(&other.addr)
+        }
+
+        fn addr(&self) -> SocketAddrV4 {
+            self.addr
         }
     }
 
@@ -102,7 +106,7 @@ fn main() {
     }
 
     // And implementing identity is as trivial as it always is:
-    impl Identity for SubnetFixedPortId {
+    impl Identity<(u8, u8)> for SubnetFixedPortId {
         fn renew(&self) -> Option<Self> {
             Some(Self {
                 addr: self.addr,
@@ -114,6 +118,10 @@ fn main() {
         // knowing our (randomized) extra field
         fn has_same_prefix(&self, other: &Self) -> bool {
             self.addr.eq(&other.addr)
+        }
+
+        fn addr(&self) -> (u8, u8) {
+            self.addr
         }
     }
 

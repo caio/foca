@@ -175,7 +175,7 @@ type Result<T> = core::result::Result<T, Error>;
 /// operation inside out (think callbacks, or an out parameter like
 /// `void* out`). This allows Foca to avoid deciding anything related
 /// to how it interacts with the operating system.
-pub struct Foca<T, C, RNG, B: BroadcastHandler<T>> {
+pub struct Foca<T, ID, C, RNG, B: BroadcastHandler<T>> {
     identity: T,
     codec: C,
     rng: RNG,
@@ -204,11 +204,14 @@ pub struct Foca<T, C, RNG, B: BroadcastHandler<T>> {
 
     broadcast_handler: B,
     custom_broadcasts: Broadcasts<B::Broadcast>,
+
+    _addr_kind: core::marker::PhantomData<ID>,
 }
 
-impl<T, C, RNG> Foca<T, C, RNG, NoCustomBroadcast>
+impl<T, ID, C, RNG> Foca<T, ID, C, RNG, NoCustomBroadcast>
 where
-    T: Identity,
+    T: Identity<ID>,
+    ID: core::hash::Hash,
     C: Codec<T>,
     RNG: Rng,
 {
@@ -223,7 +226,12 @@ where
 }
 
 #[cfg(feature = "tracing")]
-impl<T: Identity, C, RNG, B: BroadcastHandler<T>> fmt::Debug for Foca<T, C, RNG, B> {
+impl<T, ID, C, RNG, B> fmt::Debug for Foca<T, ID, C, RNG, B>
+where
+    T: Identity<ID>,
+    ID: core::hash::Hash,
+    B: BroadcastHandler<T>,
+{
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Assuming that when tracing comes into play the cluster is actually
         // uniform. Meaning: everything is configured the same, including
@@ -238,9 +246,10 @@ impl<T: Identity, C, RNG, B: BroadcastHandler<T>> fmt::Debug for Foca<T, C, RNG,
 //     that `Codec::Error` and `BroadcastHandler::Error` both implement
 //     `std::error::Error`, thus instead of wrapping these errors via
 //     `anyhow::Error::msg` we can use `anyhow::Error::new`.
-impl<T, C, RNG, B> Foca<T, C, RNG, B>
+impl<T, ID, C, RNG, B> Foca<T, ID, C, RNG, B>
 where
-    T: Identity,
+    T: Identity<ID>,
+    ID: core::hash::Hash,
     C: Codec<T>,
     RNG: Rng,
     B: BroadcastHandler<T>,
@@ -271,6 +280,7 @@ where
             custom_broadcasts: Broadcasts::new(),
             updates_buf: BytesMut::new(),
             broadcast_handler,
+            _addr_kind: core::marker::PhantomData,
         }
     }
 
@@ -315,7 +325,7 @@ where
     ///
     /// Intended to be used when identities carry metadata that occasionally
     /// changes.
-    pub fn change_identity(&mut self, new_id: T, runtime: impl Runtime<T>) -> Result<()> {
+    pub fn change_identity(&mut self, new_id: T, runtime: impl Runtime<T, ID>) -> Result<()> {
         if self.identity == new_id {
             Err(Error::SameIdentity)
         } else {
@@ -390,7 +400,7 @@ where
     pub fn apply_many(
         &mut self,
         updates: impl Iterator<Item = Member<T>>,
-        mut runtime: impl Runtime<T>,
+        mut runtime: impl Runtime<T, ID>,
     ) -> Result<()> {
         for update in updates {
             if update.id() == &self.identity {
@@ -435,7 +445,7 @@ where
         Ok(())
     }
 
-    fn adjust_connection_state(&mut self, runtime: impl Runtime<T>) {
+    fn adjust_connection_state(&mut self, runtime: impl Runtime<T, ID>) {
         match self.connection_state {
             ConnectionState::Disconnected => {
                 if self.members.num_active() > 0 {
@@ -459,7 +469,7 @@ where
     ///
     /// Sends a [`Message::Announce`] to `dst`. If accepted, we'll receive
     /// a [`Message::Feed`] as reply.
-    pub fn announce(&mut self, dst: T, runtime: impl Runtime<T>) -> Result<()> {
+    pub fn announce(&mut self, dst: T, runtime: impl Runtime<T, ID>) -> Result<()> {
         self.send_message(dst, Message::Announce, runtime)
     }
 
@@ -472,7 +482,7 @@ where
     /// Intended for more complex scenarios where an implementation wants
     /// to attempt reducing the time it takes for information to
     /// propagate thoroughly.
-    pub fn gossip(&mut self, runtime: impl Runtime<T>) -> Result<()> {
+    pub fn gossip(&mut self, runtime: impl Runtime<T, ID>) -> Result<()> {
         self.choose_and_send(
             self.config.num_indirect_probes.get(),
             Message::Gossip,
@@ -485,7 +495,7 @@ where
         &mut self,
         num_members: usize,
         msg: Message<T>,
-        mut runtime: impl Runtime<T>,
+        mut runtime: impl Runtime<T, ID>,
     ) -> Result<()> {
         self.member_buf.clear();
         self.members.choose_active_members(
@@ -513,7 +523,7 @@ where
     /// No cluster update will be sent with these messages. Intended
     /// to be used in tandem with a non-default
     /// `should_add_broadcast_data`.
-    pub fn broadcast(&mut self, mut runtime: impl Runtime<T>) -> Result<()> {
+    pub fn broadcast(&mut self, mut runtime: impl Runtime<T, ID>) -> Result<()> {
         if self.custom_broadcast_backlog() == 0 {
             // Nothing to broadcast
             return Ok(());
@@ -547,7 +557,7 @@ where
     /// of our exit so that the cluster learns about it quickly.
     ///
     /// This is the cleanest way to terminate a running Foca.
-    pub fn leave_cluster(&mut self, mut runtime: impl Runtime<T>) -> Result<()> {
+    pub fn leave_cluster(&mut self, mut runtime: impl Runtime<T, ID>) -> Result<()> {
         let data = self.serialize_member(Member::down(self.identity().clone()))?;
         self.updates.add_or_replace(
             ClusterUpdate {
@@ -587,7 +597,11 @@ where
     /// React to a previously scheduled timer event.
     ///
     /// See [`Runtime::submit_after`].
-    pub fn handle_timer(&mut self, event: Timer<T>, mut runtime: impl Runtime<T>) -> Result<()> {
+    pub fn handle_timer(
+        &mut self,
+        event: Timer<T>,
+        mut runtime: impl Runtime<T, ID>,
+    ) -> Result<()> {
         #[cfg(feature = "tracing")]
         let _span = tracing::trace_span!("handle_timer", ?event).entered();
         match event {
@@ -804,7 +818,7 @@ where
     /// Data larger than the configured limit will be rejected. Errors are
     /// expected if you're receiving arbitrary data (which very likely if
     /// you are listening to a socket address).
-    pub fn handle_data(&mut self, mut data: &[u8], mut runtime: impl Runtime<T>) -> Result<()> {
+    pub fn handle_data(&mut self, mut data: &[u8], mut runtime: impl Runtime<T, ID>) -> Result<()> {
         #[cfg(feature = "tracing")]
         let span = tracing::trace_span!(
             "handle_data",
@@ -1055,7 +1069,7 @@ where
         //     me maybe?
     }
 
-    fn probe_random_member(&mut self, mut runtime: impl Runtime<T>) -> Result<()> {
+    fn probe_random_member(&mut self, mut runtime: impl Runtime<T, ID>) -> Result<()> {
         // NEEDSWORK: A codec error may leave us in a weird state where
         //            foca talks to the cluster normally but never
         //            probes their peers. It's, however, unlikely to
@@ -1160,7 +1174,7 @@ where
     }
 
     // shortcut for apply + handle
-    fn apply_update(&mut self, update: Member<T>, runtime: impl Runtime<T>) -> Result<bool> {
+    fn apply_update(&mut self, update: Member<T>, runtime: impl Runtime<T, ID>) -> Result<bool> {
         debug_assert_ne!(&self.identity, update.id());
         let summary = self.members.apply(update.clone(), &mut self.rng);
         self.handle_apply_summary(&summary, update, runtime)?;
@@ -1172,7 +1186,7 @@ where
         &mut self,
         summary: &ApplySummary,
         update: Member<T>,
-        mut runtime: impl Runtime<T>,
+        mut runtime: impl Runtime<T, ID>,
     ) -> Result<()> {
         let id = update.id().clone();
 
@@ -1235,7 +1249,7 @@ where
         Ok(())
     }
 
-    fn become_disconnected(&mut self, mut runtime: impl Runtime<T>) {
+    fn become_disconnected(&mut self, mut runtime: impl Runtime<T, ID>) {
         // We reached zero active members, so we're offline
         debug_assert_eq!(0, self.num_members());
         self.connection_state = ConnectionState::Disconnected;
@@ -1250,7 +1264,7 @@ where
         runtime.notify(Notification::Idle);
     }
 
-    fn become_undead(&mut self, mut runtime: impl Runtime<T>) {
+    fn become_undead(&mut self, mut runtime: impl Runtime<T, ID>) {
         self.connection_state = ConnectionState::Undead;
 
         // We're down, whatever we find out by probing is unreliable
@@ -1263,7 +1277,7 @@ where
         runtime.notify(Notification::Defunct);
     }
 
-    fn become_connected(&mut self, mut runtime: impl Runtime<T>) {
+    fn become_connected(&mut self, mut runtime: impl Runtime<T, ID>) {
         debug_assert_ne!(0, self.num_members());
         self.connection_state = ConnectionState::Connected;
 
@@ -1302,7 +1316,7 @@ where
         &mut self,
         dst: T,
         message: Message<T>,
-        mut runtime: impl Runtime<T>,
+        mut runtime: impl Runtime<T, ID>,
     ) -> Result<()> {
         let header = Header {
             src: self.identity.clone(),
@@ -1451,7 +1465,7 @@ where
         &mut self,
         incarnation: Incarnation,
         state: State,
-        mut runtime: impl Runtime<T>,
+        mut runtime: impl Runtime<T, ID>,
     ) -> Result<()> {
         match state {
             State::Suspect => {
@@ -1532,7 +1546,7 @@ where
         Ok(())
     }
 
-    fn attempt_rejoin(&mut self, mut runtime: impl Runtime<T>) -> Result<bool> {
+    fn attempt_rejoin(&mut self, mut runtime: impl Runtime<T, ID>) -> Result<bool> {
         if let Some(new_identity) = self.identity.renew() {
             if self.identity == new_identity {
                 #[cfg(feature = "tracing")]
@@ -1610,9 +1624,10 @@ impl<T> AsRef<[u8]> for ClusterUpdate<T> {
 }
 
 #[cfg(test)]
-impl<T, C, RNG, B> Foca<T, C, RNG, B>
+impl<T, ID, C, RNG, B> Foca<T, ID, C, RNG, B>
 where
-    T: Identity,
+    T: Identity<ID>,
+    ID: core::hash::Hash,
     C: Codec<T>,
     RNG: rand::Rng,
     B: BroadcastHandler<T>,
@@ -1633,7 +1648,11 @@ where
         self.connection_state
     }
 
-    pub(crate) fn apply(&mut self, member: Member<T>, mut runtime: impl Runtime<T>) -> Result<()> {
+    pub(crate) fn apply(
+        &mut self,
+        member: Member<T>,
+        mut runtime: impl Runtime<T, ID>,
+    ) -> Result<()> {
         self.apply_many(core::iter::once(member), &mut runtime)
     }
 }
@@ -1809,7 +1828,7 @@ mod tests {
         // And a runtime that does nothing to pair it with
         struct NoopRuntime;
 
-        impl Runtime<ID> for NoopRuntime {
+        impl Runtime<ID, ID> for NoopRuntime {
             fn notify(&mut self, _notification: Notification<ID>) {}
             fn send_to(&mut self, _to: ID, _data: &[u8]) {}
             fn submit_after(&mut self, _event: Timer<ID>, _after: Duration) {}
@@ -2664,7 +2683,7 @@ mod tests {
         num_members: u8,
         config: Config,
     ) -> (
-        Foca<ID, BadCodec, SmallRng, NoCustomBroadcast>,
+        Foca<ID, ID, BadCodec, SmallRng, NoCustomBroadcast>,
         ID,
         Timer<ID>,
     ) {

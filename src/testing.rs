@@ -8,7 +8,7 @@ use bytes::{Buf, BufMut, Bytes};
 
 use crate::{Codec, Header, Identity, Member, Message, Notification, Runtime, State, Timer};
 
-#[derive(Debug, Clone, Copy, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialOrd, Ord, core::hash::Hash)]
 pub(crate) struct ID {
     id: u8,
     bump: u8,
@@ -66,7 +66,7 @@ impl ID {
     }
 }
 
-impl Identity for ID {
+impl Identity<ID> for ID {
     fn has_same_prefix(&self, other: &Self) -> bool {
         self.id == other.id
     }
@@ -77,6 +77,10 @@ impl Identity for ID {
         } else {
             None
         }
+    }
+
+    fn addr(&self) -> ID {
+        *self
     }
 }
 
@@ -405,7 +409,7 @@ impl InMemoryRuntime {
     }
 }
 
-impl Runtime<ID> for InMemoryRuntime {
+impl Runtime<ID, ID> for InMemoryRuntime {
     fn notify(&mut self, notification: Notification<ID>) {
         self.notifications.push(notification);
     }
