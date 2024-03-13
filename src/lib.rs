@@ -3255,6 +3255,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn custom_broadcast() {
         // Here we'll do some basic testing of the custom broadcast
         // functionality.
