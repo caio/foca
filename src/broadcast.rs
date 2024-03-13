@@ -4,7 +4,7 @@
 use alloc::vec::Vec;
 use core::{cmp::Ordering, fmt};
 
-use bytes::{Buf, BufMut, BytesMut};
+use bytes::{Buf, BufMut};
 
 /// A type capable of decoding a (associated) broadcast from a buffer
 /// and deciding whether to keep disseminating it for other members
@@ -20,7 +20,7 @@ pub trait BroadcastHandler<T> {
     ///
     /// The `AsRef<[u8]>` part is what gets sent over the wire, which
     /// [`Self::receive_item`] is supposed to decode.
-    type Broadcast: Invalidates + AsRef<[u8]>;
+    type Broadcast: Invalidates;
 
     /// The error type that `receive_item` may emit. Will be wrapped
     /// by [`crate::Error`].
@@ -109,13 +109,12 @@ impl<'a> Invalidates for &'a [u8] {
 }
 
 #[allow(dead_code)]
-struct Asd<V> {
-    flip: alloc::collections::BinaryHeap<Ee<V>>,
-    flop: alloc::collections::BinaryHeap<Ee<V>>,
+pub(crate) struct Broadcasts<V> {
+    flip: alloc::collections::BinaryHeap<Entry<V>>,
+    flop: alloc::collections::BinaryHeap<Entry<V>>,
 }
 
-#[allow(dead_code)]
-impl<T> Asd<T>
+impl<T> Broadcasts<T>
 where
     T: Invalidates,
 {
@@ -136,7 +135,7 @@ where
 
     pub(crate) fn add_or_replace(&mut self, item: T, data: Vec<u8>, max_tx: usize) {
         self.flip.retain(|node| !item.invalidates(&node.item));
-        self.flip.push(Ee {
+        self.flip.push(Entry {
             remaining_tx: max_tx,
             item,
             data,
@@ -177,182 +176,33 @@ where
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
-struct Ee<T> {
+struct Entry<T> {
     remaining_tx: usize,
     // XXX could be Bytes, or keep a pool in parent
     data: Vec<u8>,
-    // XXX ignored for eq/ord. sorting is unstable
+    // ignored for eq/ord. sorting is unstable
     item: T,
 }
 
-impl<T> PartialEq for Ee<T> {
+impl<T> PartialEq for Entry<T> {
     fn eq(&self, other: &Self) -> bool {
         self.cmp(other).is_eq()
     }
 }
 
-impl<T> Eq for Ee<T> {}
+impl<T> Eq for Entry<T> {}
 
-impl<T> PartialOrd for Ee<T> {
+impl<T> PartialOrd for Entry<T> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl<T> Ord for Ee<T> {
+impl<T> Ord for Entry<T> {
     fn cmp(&self, other: &Self) -> Ordering {
         self.remaining_tx
             .cmp(&other.remaining_tx)
             .then_with(|| self.data.len().cmp(&other.data.len()))
-    }
-}
-
-pub(crate) struct Broadcasts<V> {
-    storage: Vec<Entry<V>>,
-}
-
-impl<T> Broadcasts<T>
-where
-    T: Invalidates + AsRef<[u8]>,
-{
-    pub(crate) fn new() -> Self {
-        Self {
-            storage: Vec::new(),
-        }
-    }
-
-    pub(crate) fn len(&self) -> usize {
-        self.storage.len()
-    }
-
-    pub(crate) fn add_or_replace(&mut self, value: T, max_tx: usize) {
-        let new_node = Entry {
-            remaining_tx: max_tx,
-            value,
-        };
-
-        // Can I be smarter here?
-        if let Some(position) = self
-            .storage
-            .iter()
-            .position(|node| new_node.value.invalidates(&node.value))
-        {
-            self.storage.remove(position);
-        }
-
-        // Find where to insert whilst keeping the storage sorted
-        // Searching from the right may be better since there is a
-        // bound and default value for `remaining_tx`
-        let position = self
-            .storage
-            .binary_search(&new_node)
-            .unwrap_or_else(|pos| pos);
-        self.storage.insert(position, new_node);
-    }
-
-    pub(crate) fn fill(&mut self, mut buffer: impl BufMut, max_items: usize) -> usize {
-        if self.storage.is_empty() {
-            return 0;
-        }
-
-        let mut num_taken = 0;
-        let mut num_removed = 0;
-        let starting_len = self.storage.len();
-        let mut remaining = max_items;
-
-        // We fill the buffer giving priority to the largest
-        // least sent items.
-        for idx in (0..starting_len).rev() {
-            if !buffer.has_remaining_mut() || remaining == 0 {
-                break;
-            }
-
-            let node = &mut self.storage[idx];
-            let value_len = node.value.as_ref().len();
-            debug_assert!(node.remaining_tx > 0);
-
-            if buffer.remaining_mut() >= value_len {
-                num_taken += 1;
-                remaining -= 1;
-
-                buffer.put_slice(node.value.as_ref());
-
-                if node.remaining_tx == 1 {
-                    // Last transmission, gotta remove the node.
-                    // It's ok to swap_remove because we're walking
-                    // the storage from the right to the left
-                    self.storage.swap_remove(idx);
-                    num_removed += 1;
-                } else {
-                    node.remaining_tx -= 1;
-                }
-            }
-        }
-
-        if num_removed > 0 {
-            self.storage.truncate(starting_len - num_removed);
-        }
-
-        // XXX Any other easy "bail out" scenario?
-        let skip_resort = {
-            // If we took all the nodes without removing any
-            (num_taken == starting_len && num_removed == 0)
-                // Or ignored them all
-                || num_taken == 0
-        };
-
-        if !skip_resort {
-            self.storage.sort_unstable();
-        }
-
-        debug_assert!(!skip_resort || self.is_sorted());
-
-        num_taken
-    }
-
-    pub(crate) fn is_sorted(&self) -> bool {
-        // Future: `is_sorted` from https://github.com/rust-lang/rfcs/pull/2351
-        self.storage[..]
-            .windows(2)
-            .all(|w| w[0].remaining_tx <= w[1].remaining_tx)
-    }
-
-    pub(crate) fn is_empty(&self) -> bool {
-        self.storage.is_empty()
-    }
-}
-
-#[derive(Debug, Clone)]
-struct Entry<T> {
-    remaining_tx: usize,
-    value: T,
-}
-
-impl<T: AsRef<[u8]>> PartialEq for Entry<T> {
-    fn eq(&self, other: &Self) -> bool {
-        self.remaining_tx == other.remaining_tx
-            && self.value.as_ref().len() == other.value.as_ref().len()
-    }
-}
-
-impl<T: AsRef<[u8]>> Eq for Entry<T> {}
-
-impl<T: AsRef<[u8]>> Ord for Entry<T> {
-    fn cmp(&self, other: &Self) -> Ordering {
-        let ordering = self.remaining_tx.cmp(&other.remaining_tx);
-
-        if ordering == Ordering::Equal {
-            self.value.as_ref().len().cmp(&other.value.as_ref().len())
-        } else {
-            ordering
-        }
-    }
-}
-
-impl<T: AsRef<[u8]>> PartialOrd for Entry<T> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
     }
 }
 
@@ -372,7 +222,7 @@ mod tests {
     #[test]
     fn piggyback_behaviour() {
         let max_tx = 5;
-        let mut piggyback = Asd::new();
+        let mut piggyback = Broadcasts::new();
 
         assert!(piggyback.is_empty(), "Piggyback starts empty");
 
@@ -409,7 +259,7 @@ mod tests {
 
     #[test]
     fn fill_does_nothing_if_buffer_full() {
-        let mut piggyback = Asd::new();
+        let mut piggyback = Broadcasts::new();
         piggyback.add_or_replace(Key("a "), b"a super long value".to_vec(), 1);
 
         let buf = bytes::BytesMut::new();
@@ -425,7 +275,7 @@ mod tests {
     #[test]
     fn piggyback_consumes_largest_first() {
         let max_tx = 10;
-        let mut piggyback = Asd::new();
+        let mut piggyback = Broadcasts::new();
 
         piggyback.add_or_replace(Key("00"), b"00hi".to_vec(), max_tx);
         piggyback.add_or_replace(Key("01"), b"01hello".to_vec(), max_tx);
@@ -440,7 +290,7 @@ mod tests {
 
     #[test]
     fn highest_max_tx_is_consumed_first() {
-        let mut piggyback = Asd::new();
+        let mut piggyback = Broadcasts::new();
 
         // 3 items, same byte size, distinct max_tx
         piggyback.add_or_replace(Key("10"), b"100".to_vec(), 1);
@@ -465,7 +315,7 @@ mod tests {
     #[test]
     fn piggyback_respects_limit() {
         let max_tx = 10;
-        let mut piggyback = Asd::new();
+        let mut piggyback = Broadcasts::new();
 
         piggyback.add_or_replace(Key("fo"), b"foo".to_vec(), max_tx);
         piggyback.add_or_replace(Key("ba"), b"bar".to_vec(), max_tx);

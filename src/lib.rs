@@ -200,7 +200,7 @@ pub struct Foca<T, ID, C, RNG, B: BroadcastHandler<T>> {
     // while until they get disseminated `Config::max_transmissions`
     // times or replaced by fresher updates.
     updates_buf: BytesMut,
-    updates: Broadcasts<ClusterUpdate<T>>,
+    updates: Broadcasts<Addr<ID>>,
 
     broadcast_handler: B,
     custom_broadcasts: Broadcasts<B::Broadcast>,
@@ -340,14 +340,10 @@ where
             // If our previous identity wasn't known as Down already,
             // we'll declare it ourselves
             if !previous_is_down {
-                let data = self.serialize_member(Member::down(previous_id.clone()))?;
-                self.updates.add_or_replace(
-                    ClusterUpdate {
-                        member_id: previous_id,
-                        data,
-                    },
-                    self.config.max_transmissions.get().into(),
-                );
+                let addr = Addr(previous_id.addr());
+                let data = self.serialize_member(Member::down(previous_id))?;
+                self.updates
+                    .add_or_replace(addr, data, self.config.max_transmissions.get().into());
             }
 
             self.gossip(runtime)?;
@@ -558,14 +554,10 @@ where
     ///
     /// This is the cleanest way to terminate a running Foca.
     pub fn leave_cluster(&mut self, mut runtime: impl Runtime<T, ID>) -> Result<()> {
+        let addr = Addr(self.identity().addr());
         let data = self.serialize_member(Member::down(self.identity().clone()))?;
-        self.updates.add_or_replace(
-            ClusterUpdate {
-                member_id: self.identity().clone(),
-                data,
-            },
-            self.config.max_transmissions.get().into(),
-        );
+        self.updates
+            .add_or_replace(addr, data, self.config.max_transmissions.get().into());
 
         self.gossip(&mut runtime)?;
 
@@ -1046,14 +1038,14 @@ where
         custom_broadcasts_result
     }
 
-    fn serialize_member(&mut self, member: Member<T>) -> Result<Bytes> {
-        let mut buf = self.updates_buf.split();
+    fn serialize_member(&mut self, member: Member<T>) -> Result<Vec<u8>> {
+        let mut buf = Vec::new();
         self.codec
             .encode_member(&member, &mut buf)
             .map_err(anyhow::Error::msg)
             .map_err(Error::Encode)?;
 
-        Ok(buf.freeze())
+        Ok(buf)
     }
 
     fn reset(&mut self) {
@@ -1195,14 +1187,10 @@ where
             tracing::trace!(?update, ?summary, "Update applied");
 
             // Cluster state changed, start broadcasting it
+            let addr = Addr(id.addr());
             let data = self.serialize_member(update)?;
-            self.updates.add_or_replace(
-                ClusterUpdate {
-                    member_id: id.clone(),
-                    data,
-                },
-                self.config.max_transmissions.get().into(),
-            );
+            self.updates
+                .add_or_replace(addr, data, self.config.max_transmissions.get().into());
 
             // Down is a terminal state, so set up a handler for removing
             // the member so that it may rejoin later
@@ -1241,8 +1229,10 @@ where
                 #[cfg(feature = "tracing")]
                 tracing::trace!("received broadcast item");
 
-                self.custom_broadcasts
-                    .add_or_replace(broadcast, self.config.max_transmissions.get().into());
+                todo!("FIX CUSTOM BROADCASTS");
+
+                // self.custom_broadcasts
+                //     .add_or_replace(broadcast, self.config.max_transmissions.get().into());
             }
         }
 
@@ -1604,22 +1594,13 @@ impl<T> BroadcastHandler<T> for NoCustomBroadcast {
     }
 }
 
-struct ClusterUpdate<T> {
-    member_id: T,
-    data: Bytes,
-}
+struct Addr<T>(T);
 
-impl<T: PartialEq> Invalidates for ClusterUpdate<T> {
+impl<T: PartialEq> Invalidates for Addr<T> {
     // State is managed externally (via Members), so invalidation
     // is a trivial replace-if-same-key
     fn invalidates(&self, other: &Self) -> bool {
-        self.member_id == other.member_id
-    }
-}
-
-impl<T> AsRef<[u8]> for ClusterUpdate<T> {
-    fn as_ref(&self) -> &[u8] {
-        self.data.as_ref()
+        self.0 == other.0
     }
 }
 
