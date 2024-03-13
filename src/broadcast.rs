@@ -4,7 +4,7 @@
 use alloc::vec::Vec;
 use core::{cmp::Ordering, fmt};
 
-use bytes::{Buf, BufMut};
+use bytes::{Buf, BufMut, BytesMut};
 
 /// A type capable of decoding a (associated) broadcast from a buffer
 /// and deciding whether to keep disseminating it for other members
@@ -105,6 +105,106 @@ pub trait Invalidates {
 impl<'a> Invalidates for &'a [u8] {
     fn invalidates(&self, other: &Self) -> bool {
         self.eq(other)
+    }
+}
+
+#[allow(dead_code)]
+struct Asd<V> {
+    flip: alloc::collections::BinaryHeap<Ee<V>>,
+    flop: alloc::collections::BinaryHeap<Ee<V>>,
+}
+
+#[allow(dead_code)]
+impl<T> Asd<T>
+where
+    T: Invalidates,
+{
+    pub(crate) fn new() -> Self {
+        Self {
+            flip: Default::default(),
+            flop: Default::default(),
+        }
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.flip.len()
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.flip.is_empty()
+    }
+
+    pub(crate) fn add_or_replace(&mut self, item: T, data: Vec<u8>, max_tx: usize) {
+        self.flip.retain(|node| !item.invalidates(&node.item));
+        self.flip.push(Ee {
+            remaining_tx: max_tx,
+            item,
+            data,
+        });
+    }
+
+    pub(crate) fn fill(&mut self, mut buffer: impl BufMut, max_items: usize) -> usize {
+        if self.flip.is_empty() {
+            return 0;
+        }
+
+        let mut num_taken = 0;
+        let mut remaining = max_items;
+
+        while buffer.has_remaining_mut() && remaining > 0 {
+            let Some(mut node) = self.flip.pop() else {
+                break;
+            };
+            debug_assert!(node.remaining_tx > 0);
+
+            if buffer.remaining_mut() >= node.data.len() {
+                num_taken += 1;
+                remaining -= 1;
+
+                buffer.put_slice(&node.data);
+                node.remaining_tx -= 1;
+            }
+
+            if node.remaining_tx > 0 {
+                self.flop.push(node);
+            }
+        }
+
+        self.flip.append(&mut self.flop);
+
+        num_taken
+    }
+}
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+struct Ee<T> {
+    remaining_tx: usize,
+    // XXX could be Bytes, or keep a pool in parent
+    data: Vec<u8>,
+    // XXX ignored for eq/ord. sorting is unstable
+    item: T,
+}
+
+impl<T> PartialEq for Ee<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other).is_eq()
+    }
+}
+
+impl<T> Eq for Ee<T> {}
+
+impl<T> PartialOrd for Ee<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl<T> Ord for Ee<T> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.remaining_tx
+            .cmp(&other.remaining_tx)
+            .then_with(|| self.data.len().cmp(&other.data.len()))
     }
 }
 
@@ -261,42 +361,26 @@ mod tests {
 
     use super::*;
 
-    struct TwoByteKey(Vec<u8>);
+    struct Key(&'static str);
 
-    impl TwoByteKey {
-        fn new(data: impl AsRef<[u8]>) -> Self {
-            assert!(
-                data.as_ref().len() > 2,
-                "first two bytes are used as key for invalidation"
-            );
-            Self(Vec::from(data.as_ref()))
-        }
-    }
-
-    impl Invalidates for TwoByteKey {
+    impl Invalidates for Key {
         fn invalidates(&self, other: &Self) -> bool {
-            self.0[..2] == other.0[..2]
-        }
-    }
-
-    impl AsRef<[u8]> for TwoByteKey {
-        fn as_ref(&self) -> &[u8] {
-            self.0.as_ref()
+            self.0 == other.0
         }
     }
 
     #[test]
     fn piggyback_behaviour() {
         let max_tx = 5;
-        let mut piggyback = Broadcasts::new();
+        let mut piggyback = Asd::new();
 
         assert!(piggyback.is_empty(), "Piggyback starts empty");
 
-        piggyback.add_or_replace(TwoByteKey::new(b"AAabc"), max_tx);
+        piggyback.add_or_replace(Key("AA"), b"AAabc".to_vec(), max_tx);
 
         assert_eq!(1, piggyback.len());
 
-        piggyback.add_or_replace(TwoByteKey::new(b"AAcba"), max_tx);
+        piggyback.add_or_replace(Key("AA"), b"AAcba".to_vec(), max_tx);
 
         assert_eq!(
             1,
@@ -325,8 +409,8 @@ mod tests {
 
     #[test]
     fn fill_does_nothing_if_buffer_full() {
-        let mut piggyback = Broadcasts::new();
-        piggyback.add_or_replace(TwoByteKey::new(b"a super long value"), 1);
+        let mut piggyback = Asd::new();
+        piggyback.add_or_replace(Key("a "), b"a super long value".to_vec(), 1);
 
         let buf = bytes::BytesMut::new();
         let mut limited = buf.limit(5);
@@ -341,11 +425,11 @@ mod tests {
     #[test]
     fn piggyback_consumes_largest_first() {
         let max_tx = 10;
-        let mut piggyback = Broadcasts::new();
+        let mut piggyback = Asd::new();
 
-        piggyback.add_or_replace(TwoByteKey::new(b"00hi"), max_tx);
-        piggyback.add_or_replace(TwoByteKey::new(b"01hello"), max_tx);
-        piggyback.add_or_replace(TwoByteKey::new(b"02hey"), max_tx);
+        piggyback.add_or_replace(Key("00"), b"00hi".to_vec(), max_tx);
+        piggyback.add_or_replace(Key("01"), b"01hello".to_vec(), max_tx);
+        piggyback.add_or_replace(Key("02"), b"02hey".to_vec(), max_tx);
 
         let mut buf = Vec::new();
         let num_items = piggyback.fill(&mut buf, usize::MAX);
@@ -356,12 +440,12 @@ mod tests {
 
     #[test]
     fn highest_max_tx_is_consumed_first() {
-        let mut piggyback = Broadcasts::new();
+        let mut piggyback = Asd::new();
 
         // 3 items, same byte size, distinct max_tx
-        piggyback.add_or_replace(TwoByteKey::new(b"100"), 1);
-        piggyback.add_or_replace(TwoByteKey::new(b"200"), 2);
-        piggyback.add_or_replace(TwoByteKey::new(b"300"), 3);
+        piggyback.add_or_replace(Key("10"), b"100".to_vec(), 1);
+        piggyback.add_or_replace(Key("20"), b"200".to_vec(), 2);
+        piggyback.add_or_replace(Key("30"), b"300".to_vec(), 3);
 
         let mut buf = Vec::new();
         piggyback.fill(&mut buf, usize::MAX);
@@ -381,11 +465,11 @@ mod tests {
     #[test]
     fn piggyback_respects_limit() {
         let max_tx = 10;
-        let mut piggyback = Broadcasts::new();
+        let mut piggyback = Asd::new();
 
-        piggyback.add_or_replace(TwoByteKey::new(b"foo"), max_tx);
-        piggyback.add_or_replace(TwoByteKey::new(b"bar"), max_tx);
-        piggyback.add_or_replace(TwoByteKey::new(b"baz"), max_tx);
+        piggyback.add_or_replace(Key("fo"), b"foo".to_vec(), max_tx);
+        piggyback.add_or_replace(Key("ba"), b"bar".to_vec(), max_tx);
+        piggyback.add_or_replace(Key("ba"), b"baz".to_vec(), max_tx);
 
         let mut buf = Vec::new();
         let num_items = piggyback.fill(&mut buf, 0);
