@@ -52,12 +52,6 @@ fn main() {
             })
         }
 
-        // And we ensure that members can Announce to us without
-        // knowing our (randomized) extra field
-        fn has_same_prefix(&self, other: &Self) -> bool {
-            self.addr.eq(&other.addr)
-        }
-
         fn addr(&self) -> SocketAddrV4 {
             self.addr
         }
@@ -115,12 +109,6 @@ fn main() {
                 addr: self.addr,
                 extra: self.extra.wrapping_add(1),
             })
-        }
-
-        // And we ensure that members can Announce to us without
-        // knowing our (randomized) extra field
-        fn has_same_prefix(&self, other: &Self) -> bool {
-            self.addr.eq(&other.addr)
         }
 
         fn addr(&self) -> (u8, u8) {

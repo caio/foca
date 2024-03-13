@@ -76,10 +76,6 @@ impl ID {
 impl Identity for ID {
     type Addr = ID;
 
-    fn has_same_prefix(&self, other: &Self) -> bool {
-        self.id == other.id
-    }
-
     fn renew(&self) -> Option<Self> {
         if self.rejoinable {
             Some(ID::new_with_bump(self.id, self.bump.wrapping_add(1)).rejoinable())

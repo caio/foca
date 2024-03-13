@@ -142,14 +142,6 @@ impl ID {
 impl Identity for ID {
     type Addr = SocketAddr;
 
-    // Since a client outside the cluster will not be aware of our
-    // `bump` field, we implement the optional trait method
-    // `has_same_prefix` to allow anyone that knows our `addr`
-    // to join our cluster.
-    fn has_same_prefix(&self, other: &Self) -> bool {
-        self.addr.eq(&other.addr)
-    }
-
     // And by implementing `renew` we enable automatic rejoining:
     // when another member declares us as down, Foca immediatelly
     // switches to this new identity and rejoins the cluster for us

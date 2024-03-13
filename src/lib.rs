@@ -393,7 +393,7 @@ where
         for update in updates {
             if update.id() == &self.identity {
                 self.handle_self_update(update.incarnation(), update.state(), &mut runtime)?;
-            } else if self.identity.has_same_prefix(update.id()) {
+            } else if self.identity.addr() == update.id().addr() {
                 // We received an update that's about an identity that *could*
                 // have been ours but definitely isn't (the branch right above,
                 // where we check equality)
@@ -618,7 +618,7 @@ where
                     self.config.num_indirect_probes.get(),
                     &mut self.member_buf,
                     &mut self.rng,
-                    |candidate| candidate != &probed_id && !candidate.has_same_prefix(&probed_id),
+                    |candidate| candidate != &probed_id,
                 );
 
                 #[cfg(feature = "tracing")]
@@ -1436,7 +1436,7 @@ where
             || (header.message == Message::Announce
                 // Then we accept it if DST is one of our _possible_
                 // identities
-                && self.identity.has_same_prefix(&header.dst))
+                && self.identity.addr() == header.dst.addr())
     }
 
     fn handle_self_update(
@@ -2429,7 +2429,7 @@ mod tests {
         // passing the "has same prefix" check to verify the join
         // doesn't happen
         let wrong_dst = ID::new(3);
-        assert!(!target_id.has_same_prefix(&wrong_dst));
+        assert_ne!(target_id.addr(), wrong_dst.addr());
         let data = (
             Header {
                 src: src_id,
@@ -2449,7 +2449,7 @@ mod tests {
         // prefix check
         let dst = ID::new_with_bump(1, 42);
         assert_ne!(target_id, dst);
-        assert!(target_id.has_same_prefix(&dst));
+        assert_eq!(target_id.addr(), dst.addr());
         let data = (
             Header {
                 src: src_id,
@@ -3751,7 +3751,7 @@ mod tests {
         // So that they are not the same
         assert_ne!(id, renewed);
         // But have the same prefix
-        assert!(id.has_same_prefix(&renewed));
+        assert_eq!(id.addr(), renewed.addr());
 
         // If we have an instance running with the renewed
         // id as its identity

@@ -360,10 +360,6 @@ mod tests {
         fn addr(&self) -> Self::Addr {
             self.0
         }
-
-        fn has_same_prefix(&self, other: &Self) -> bool {
-            self.0 == other.0
-        }
     }
 
     use State::*;

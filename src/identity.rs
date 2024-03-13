@@ -40,21 +40,6 @@ pub trait Identity: Clone + Eq + fmt::Debug {
 
     /// FIXME missing docs
     fn addr(&self) -> Self::Addr;
-
-    /// Optionally accept Announce messages addressed to an identity
-    /// that isn't exactly the same as ours.
-    ///
-    /// Foca discards messages that aren't addressed to its exact
-    /// identity. This means that if your identity has an unpredictable
-    /// field (a UUID or a random number, for example), nobody will
-    /// be able to join with us directly.
-    ///
-    /// The [`Self::has_same_prefix`] method is how we teach Foca to
-    /// relax this restriction: Upon receiving an Announce message it
-    /// will call `current_id.has_same_prefix(dst)` and if it yields
-    /// `true` the message will be accepted and the new member will
-    /// be allowed to join the cluster.
-    fn has_same_prefix(&self, other: &Self) -> bool;
 }
 
 #[cfg(feature = "std")]
@@ -69,10 +54,6 @@ macro_rules! impl_basic_identity {
 
             fn addr(&self) -> $type {
                 *self
-            }
-
-            fn has_same_prefix(&self, _other: &Self) -> bool {
-                false
             }
         }
     };
