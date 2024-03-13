@@ -26,7 +26,7 @@ use core::fmt;
 ///
 /// See `examples/identity_golf.rs` for ideas
 ///
-pub trait Identity<T: core::hash::Hash>: Clone + Eq + fmt::Debug {
+pub trait Identity<T: core::hash::Hash + PartialEq>: Clone + Eq + fmt::Debug {
     /// Opt-in on auto-rejoining by providing a new identity.
     ///
     /// When Foca detects it's been declared Down by another member

@@ -8,7 +8,7 @@ use bytes::{Buf, BufMut, Bytes};
 
 use crate::{Codec, Header, Identity, Member, Message, Notification, Runtime, State, Timer};
 
-#[derive(Debug, Clone, Copy, PartialOrd, Ord, core::hash::Hash)]
+#[derive(Debug, Clone, Copy, PartialOrd, Ord)]
 pub(crate) struct ID {
     id: u8,
     bump: u8,
@@ -19,6 +19,13 @@ impl PartialEq for ID {
     fn eq(&self, other: &Self) -> bool {
         // Ignoring `rejoinable` field
         self.id == other.id && self.bump == other.bump
+    }
+}
+
+impl core::hash::Hash for ID {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+        self.bump.hash(state);
     }
 }
 

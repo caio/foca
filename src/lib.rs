@@ -211,7 +211,7 @@ pub struct Foca<T, ID, C, RNG, B: BroadcastHandler<T>> {
 impl<T, ID, C, RNG> Foca<T, ID, C, RNG, NoCustomBroadcast>
 where
     T: Identity<ID>,
-    ID: core::hash::Hash,
+    ID: core::hash::Hash + PartialEq,
     C: Codec<T>,
     RNG: Rng,
 {
@@ -229,7 +229,7 @@ where
 impl<T, ID, C, RNG, B> fmt::Debug for Foca<T, ID, C, RNG, B>
 where
     T: Identity<ID>,
-    ID: core::hash::Hash,
+    ID: core::hash::Hash + PartialEq,
     B: BroadcastHandler<T>,
 {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -249,7 +249,7 @@ where
 impl<T, ID, C, RNG, B> Foca<T, ID, C, RNG, B>
 where
     T: Identity<ID>,
-    ID: core::hash::Hash,
+    ID: core::hash::Hash + PartialEq,
     C: Codec<T>,
     RNG: Rng,
     B: BroadcastHandler<T>,
@@ -1627,7 +1627,7 @@ impl<T> AsRef<[u8]> for ClusterUpdate<T> {
 impl<T, ID, C, RNG, B> Foca<T, ID, C, RNG, B>
 where
     T: Identity<ID>,
-    ID: core::hash::Hash,
+    ID: core::hash::Hash + PartialEq,
     C: Codec<T>,
     RNG: rand::Rng,
     B: BroadcastHandler<T>,
