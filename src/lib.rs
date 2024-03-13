@@ -124,7 +124,7 @@ extern crate std;
 
 use core::{cmp::Ordering, convert::TryFrom, fmt, iter::ExactSizeIterator, mem};
 
-use bytes::{Buf, BufMut, Bytes, BytesMut};
+use bytes::{Buf, BufMut, BytesMut};
 use rand::Rng;
 
 mod broadcast;
@@ -199,7 +199,6 @@ pub struct Foca<T: Identity, C, RNG, B: BroadcastHandler<T>> {
     // Holds (serialized) cluster updates, which may live for a
     // while until they get disseminated `Config::max_transmissions`
     // times or replaced by fresher updates.
-    updates_buf: BytesMut,
     updates: Broadcasts<Addr<T::Addr>>,
 
     broadcast_handler: B,
@@ -273,7 +272,6 @@ where
             updates: Broadcasts::new(),
             send_buf: BytesMut::with_capacity(max_bytes),
             custom_broadcasts: Broadcasts::new(),
-            updates_buf: BytesMut::new(),
             broadcast_handler,
         }
     }
@@ -1210,7 +1208,7 @@ where
             tracing::trace!(len = data.remaining(), "handle_custom_broadcasts");
         }
         while data.has_remaining() {
-            if let Some(broadcast) = self
+            if let Some(_broadcast) = self
                 .broadcast_handler
                 .receive_item(&mut data, sender)
                 .map_err(anyhow::Error::msg)
@@ -1633,7 +1631,7 @@ mod tests {
         time::Duration,
     };
 
-    use bytes::{Buf, BufMut};
+    use bytes::{Buf, BufMut, Bytes};
     use rand::{rngs::SmallRng, SeedableRng};
 
     use crate::testing::{BadCodec, InMemoryRuntime, ID};
