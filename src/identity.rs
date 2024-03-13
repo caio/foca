@@ -26,7 +26,9 @@ use core::fmt;
 ///
 /// See `examples/identity_golf.rs` for ideas
 ///
-pub trait Identity<T: core::hash::Hash + PartialEq>: Clone + Eq + fmt::Debug {
+pub trait Identity: Clone + Eq + fmt::Debug {
+    /// FIXME docs
+    type Addr: PartialEq;
     /// Opt-in on auto-rejoining by providing a new identity.
     ///
     /// When Foca detects it's been declared Down by another member
@@ -37,7 +39,7 @@ pub trait Identity<T: core::hash::Hash + PartialEq>: Clone + Eq + fmt::Debug {
     fn renew(&self) -> Option<Self>;
 
     /// FIXME missing docs
-    fn addr(&self) -> T;
+    fn addr(&self) -> Self::Addr;
 
     /// Optionally accept Announce messages addressed to an identity
     /// that isn't exactly the same as ours.
@@ -58,7 +60,9 @@ pub trait Identity<T: core::hash::Hash + PartialEq>: Clone + Eq + fmt::Debug {
 #[cfg(feature = "std")]
 macro_rules! impl_basic_identity {
     ($type: ty) => {
-        impl Identity<$type> for $type {
+        impl Identity for $type {
+            type Addr = $type;
+
             fn renew(&self) -> Option<Self> {
                 None
             }

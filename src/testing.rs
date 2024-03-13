@@ -73,7 +73,9 @@ impl ID {
     }
 }
 
-impl Identity<ID> for ID {
+impl Identity for ID {
+    type Addr = ID;
+
     fn has_same_prefix(&self, other: &Self) -> bool {
         self.id == other.id
     }
@@ -416,7 +418,7 @@ impl InMemoryRuntime {
     }
 }
 
-impl Runtime<ID, ID> for InMemoryRuntime {
+impl Runtime<ID> for InMemoryRuntime {
     fn notify(&mut self, notification: Notification<ID>) {
         self.notifications.push(notification);
     }

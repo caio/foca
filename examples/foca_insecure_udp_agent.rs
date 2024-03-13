@@ -139,7 +139,9 @@ impl ID {
     }
 }
 
-impl Identity<SocketAddr> for ID {
+impl Identity for ID {
+    type Addr = SocketAddr;
+
     // Since a client outside the cluster will not be aware of our
     // `bump` field, we implement the optional trait method
     // `has_same_prefix` to allow anyone that knows our `addr`
@@ -170,7 +172,7 @@ struct AccumulatingRuntime<T> {
     buf: BytesMut,
 }
 
-impl<T: Identity<SocketAddr>> Runtime<T, SocketAddr> for AccumulatingRuntime<T> {
+impl<T: Identity> Runtime<T> for AccumulatingRuntime<T> {
     // Notice that we'll interact to these via pop(), so we're taking
     // them in reverse order of when it happened.
     // That's perfectly fine, the order of items from a single interaction
