@@ -821,7 +821,10 @@ where
         #[cfg(feature = "tracing")]
         span.record("header", tracing::field::debug(&header));
 
-        if header.src == self.identity {
+        // Since one can implement PartialEq and Identity however
+        // they like, there's no guarantee that if addresses are
+        // different, so are identities. So we check both
+        if header.src == self.identity || header.src.addr() == self.identity.addr() {
             return Err(Error::DataFromOurselves);
         }
 
@@ -2354,6 +2357,30 @@ mod tests {
                 &encode((
                     Header {
                         src: ID::new(1),
+                        src_incarnation: 0,
+                        dst: ID::new(1),
+                        message: Message::Announce
+                    },
+                    Vec::new()
+                )),
+                &mut runtime
+            )
+        );
+    }
+
+    #[test]
+    fn cant_receive_data_from_same_addr() {
+        let id = ID::new(1);
+        let mut foca = Foca::new(id, config(), rng(), codec());
+        let mut runtime = InMemoryRuntime::new();
+
+        // Just the address is the same now
+        assert_eq!(
+            Err(Error::DataFromOurselves),
+            foca.handle_data(
+                &encode((
+                    Header {
+                        src: id.bump(),
                         src_incarnation: 0,
                         dst: ID::new(1),
                         message: Message::Announce
