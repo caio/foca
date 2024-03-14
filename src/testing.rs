@@ -10,7 +10,7 @@ use crate::{Codec, Header, Identity, Member, Message, Notification, Runtime, Sta
 
 #[derive(Debug, Clone, Copy, PartialOrd, Ord)]
 pub(crate) struct ID {
-    id: u8,
+    addr: u8,
     bump: u8,
     rejoinable: bool,
 }
@@ -18,13 +18,13 @@ pub(crate) struct ID {
 impl PartialEq for ID {
     fn eq(&self, other: &Self) -> bool {
         // Ignoring `rejoinable` field
-        self.id == other.id && self.bump == other.bump
+        self.addr == other.addr && self.bump == other.bump
     }
 }
 
 impl core::hash::Hash for ID {
     fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-        self.id.hash(state);
+        self.addr.hash(state);
         self.bump.hash(state);
     }
 }
@@ -38,7 +38,7 @@ impl ID {
 
     pub(crate) fn new_with_bump(id: u8, bump: u8) -> Self {
         Self {
-            id,
+            addr: id,
             bump,
             rejoinable: false,
         }
@@ -51,7 +51,7 @@ impl ID {
 
     pub(crate) fn serialize_into(&self, mut buf: impl BufMut) -> Result<(), BadCodecError> {
         if buf.remaining_mut() >= 2 {
-            buf.put_u8(self.id);
+            buf.put_u8(self.addr);
             buf.put_u8(self.bump);
             Ok(())
         } else {
@@ -62,7 +62,7 @@ impl ID {
     pub(crate) fn deserialize_from(mut buf: impl Buf) -> Result<Self, BadCodecError> {
         if buf.remaining() >= 2 {
             Ok(Self {
-                id: buf.get_u8(),
+                addr: buf.get_u8(),
                 bump: buf.get_u8(),
                 // Only the identity held by foca cares about this
                 rejoinable: false,
@@ -74,18 +74,18 @@ impl ID {
 }
 
 impl Identity for ID {
-    type Addr = ID;
+    type Addr = u8;
 
     fn renew(&self) -> Option<Self> {
         if self.rejoinable {
-            Some(ID::new_with_bump(self.id, self.bump.wrapping_add(1)).rejoinable())
+            Some(ID::new_with_bump(self.addr, self.bump.wrapping_add(1)).rejoinable())
         } else {
             None
         }
     }
 
-    fn addr(&self) -> ID {
-        *self
+    fn addr(&self) -> u8 {
+        self.addr
     }
 }
 

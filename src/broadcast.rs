@@ -146,6 +146,7 @@ where
         if self.flip.is_empty() {
             return 0;
         }
+        debug_assert!(self.flop.is_empty());
 
         let mut num_taken = 0;
         let mut remaining = max_items;
