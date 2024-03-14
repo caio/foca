@@ -55,6 +55,11 @@ fn main() {
         fn addr(&self) -> SocketAddrV4 {
             self.addr
         }
+
+        // FIXME explain
+        fn win_addr_conflict(&self, adversary: &Self) -> bool {
+            self.extra > adversary.extra
+        }
     }
 
     // So now Foca will happily attempt to rejoin a cluster
@@ -101,9 +106,10 @@ fn main() {
         }
     }
 
-    // And implementing identity is as trivial as it always is:
+    // And implementing identity is as simple as it always is:
     impl Identity for SubnetFixedPortId {
         type Addr = (u8, u8);
+
         fn renew(&self) -> Option<Self> {
             Some(Self {
                 addr: self.addr,
@@ -113,6 +119,10 @@ fn main() {
 
         fn addr(&self) -> (u8, u8) {
             self.addr
+        }
+
+        fn win_addr_conflict(&self, adversary: &Self) -> bool {
+            self.extra > adversary.extra
         }
     }
 

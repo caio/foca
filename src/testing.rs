@@ -92,6 +92,11 @@ impl Identity for ID {
     fn addr(&self) -> u8 {
         self.addr
     }
+
+    fn win_addr_conflict(&self, adversary: &Self) -> bool {
+        debug_assert_ne!(self, adversary);
+        self.bump > adversary.bump
+    }
 }
 
 pub(crate) struct BadCodec;

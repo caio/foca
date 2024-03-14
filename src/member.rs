@@ -261,9 +261,6 @@ where
         self.inner.iter().filter(|m| m.is_active())
     }
 
-    // XXX will probably need a specialized mark-as-down else it gets
-    //     awkward
-
     pub(crate) fn apply_existing_if<F: Fn(&Member<T>) -> bool>(
         &mut self,
         update: Member<T>,
@@ -274,8 +271,31 @@ where
             .iter_mut()
             .find(|member| member.id.addr() == update.id().addr())
         {
+            // if there's a conflict and the update wins, the member
+            // state is fully replaced
+            let mut force_apply = false;
             if known_member.id != update.id {
-                todo!("GOTTA HANDLE SUM CONFLICT");
+                // If the update wins the conflict, the full member
+                // state is replaced (it's essentially a rejoin)
+                if known_member.id.win_addr_conflict(&update.id) {
+                    // update lost conflict, it's junk
+                    tracing::trace!(
+                        update = tracing::field::debug(&update),
+                        existing = tracing::field::debug(&known_member),
+                        "existing won conflict resolution, nothing to do"
+                    );
+                    return Some(ApplySummary {
+                        is_active_now: known_member.is_active(),
+                        apply_successful: false,
+                        changed_active_set: false,
+                    });
+                }
+                tracing::trace!(
+                    update = tracing::field::debug(&update),
+                    existing = tracing::field::debug(&known_member),
+                    "update won conflict resolution"
+                );
+                force_apply = true;
             }
 
             if !condition(known_member) {
@@ -286,7 +306,14 @@ where
                 });
             }
             let was_active = known_member.is_active();
-            let apply_successful = known_member.change_state(update.incarnation(), update.state());
+            let apply_successful = if force_apply {
+                known_member.id = update.id;
+                known_member.state = update.state;
+                known_member.incarnation = update.incarnation;
+                true
+            } else {
+                known_member.change_state(update.incarnation, update.state)
+            };
             let is_active_now = known_member.is_active();
             let changed_active_set = is_active_now != was_active;
 
@@ -366,6 +393,10 @@ mod tests {
 
         fn addr(&self) -> Self::Addr {
             self.0
+        }
+
+        fn win_addr_conflict(&self, _adversary: &Self) -> bool {
+            panic!("addr is self, there'll never be a conflict");
         }
     }
 

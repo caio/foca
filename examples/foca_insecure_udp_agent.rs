@@ -155,6 +155,11 @@ impl Identity for ID {
     fn addr(&self) -> SocketAddr {
         self.addr
     }
+
+    // FIXME explain
+    fn win_addr_conflict(&self, adversary: &Self) -> bool {
+        self.bump > adversary.bump
+    }
 }
 
 struct AccumulatingRuntime<T> {

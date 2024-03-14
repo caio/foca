@@ -29,6 +29,7 @@ use core::fmt;
 pub trait Identity: Clone + Eq + fmt::Debug {
     /// FIXME docs
     type Addr: PartialEq;
+
     /// Opt-in on auto-rejoining by providing a new identity.
     ///
     /// When Foca detects it's been declared Down by another member
@@ -40,6 +41,11 @@ pub trait Identity: Clone + Eq + fmt::Debug {
 
     /// FIXME missing docs
     fn addr(&self) -> Self::Addr;
+
+    /// FIXME docs
+    // decide which identity to keep in case of conflicts
+    // ffs this name
+    fn win_addr_conflict(&self, _adversary: &Self) -> bool;
 }
 
 #[cfg(feature = "std")]
@@ -54,6 +60,10 @@ macro_rules! impl_basic_identity {
 
             fn addr(&self) -> $type {
                 *self
+            }
+
+            fn win_addr_conflict(&self, _adversary: &Self) -> bool {
+                panic!("addr is self, there'll never be a conflict");
             }
         }
     };

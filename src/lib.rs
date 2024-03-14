@@ -658,10 +658,6 @@ where
                         // Checking only incarnation is sufficient because to refute
                         // suspicion the member must increment its own incarnation
                         .apply_existing_if(as_down.clone(), |member| {
-                            // FIXME test that this doesn't kill a member after renew()
-                            // strict identity check, otherwise we'd end up declaring
-                            // a renewed identity as down
-                            // member.id() == &member_id &&
                             member.incarnation() == incarnation
                         })
                     {
@@ -3933,19 +3929,41 @@ mod tests {
         let mut foca = Foca::new(ID::new(1), config(), rng(), codec());
         let mut runtime = InMemoryRuntime::new();
 
-        assert_eq!(
-            Ok(()),
-            foca.apply(Member::alive(ID::new_with_bump(2, 0)), &mut runtime)
-        );
-
-        assert_eq!(
-            Ok(()),
-            foca.apply(Member::alive(ID::new_with_bump(2, 1)), &mut runtime)
-        );
-
+        // Given a known member ID=2,0
+        let original = ID::new_with_bump(2, 0);
+        assert_eq!(Ok(()), foca.apply(Member::alive(original), &mut runtime));
         assert_eq!(1, foca.num_members());
 
-        todo!("continue");
+        // When foca learns about a new member with same address ID=2,1
+        // that wins its conflict resolution round
+        let conflicted = ID::new_with_bump(2, 1);
+        assert_eq!(original.addr(), conflicted.addr());
+        assert!(conflicted.win_addr_conflict(&original));
+        assert_eq!(Ok(()), foca.apply(Member::alive(conflicted), &mut runtime));
+
+        // It should replace the original state
+        assert_eq!(1, foca.num_members());
+        assert_eq!(
+            foca.iter_members().next().unwrap(),
+            &Member::alive(conflicted)
+        );
+
+        // Conversely, if it learns about a member with same address
+        // that loses the conflict
+        assert!(!original.win_addr_conflict(&conflicted));
+        // nothing changes
+        for m in [
+            Member::alive(original),
+            Member::suspect(original),
+            Member::down(original),
+        ] {
+            assert_eq!(Ok(()), foca.apply(m, &mut runtime));
+            assert_eq!(1, foca.num_members());
+            assert_eq!(
+                foca.iter_members().next().unwrap(),
+                &Member::alive(conflicted)
+            );
+        }
     }
 
     #[test]
@@ -3982,4 +4000,6 @@ mod tests {
         assert_eq!(1, foca.num_members());
         assert_eq!(foca.iter_members().next().unwrap(), &Member::alive(bumped));
     }
+
+    // FIXME test force apply behavior, summary and notifications
 }
