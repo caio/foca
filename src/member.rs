@@ -261,6 +261,9 @@ where
         self.inner.iter().filter(|m| m.is_active())
     }
 
+    // XXX will probably need a specialized mark-as-down else it gets
+    //     awkward
+
     pub(crate) fn apply_existing_if<F: Fn(&Member<T>) -> bool>(
         &mut self,
         update: Member<T>,
@@ -271,6 +274,10 @@ where
             .iter_mut()
             .find(|member| member.id.addr() == update.id().addr())
         {
+            if known_member.id != update.id {
+                todo!("GOTTA HANDLE SUM CONFLICT");
+            }
+
             if !condition(known_member) {
                 return Some(ApplySummary {
                     is_active_now: known_member.is_active(),

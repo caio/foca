@@ -658,6 +658,10 @@ where
                         // Checking only incarnation is sufficient because to refute
                         // suspicion the member must increment its own incarnation
                         .apply_existing_if(as_down.clone(), |member| {
+                            // FIXME test that this doesn't kill a member after renew()
+                            // strict identity check, otherwise we'd end up declaring
+                            // a renewed identity as down
+                            // member.id() == &member_id &&
                             member.incarnation() == incarnation
                         })
                     {
@@ -3922,5 +3926,60 @@ mod tests {
             id_one, header.src,
             "message should be crafted with the new/renewed id"
         );
+    }
+
+    #[test]
+    fn handles_member_addr_conflict() {
+        let mut foca = Foca::new(ID::new(1), config(), rng(), codec());
+        let mut runtime = InMemoryRuntime::new();
+
+        assert_eq!(
+            Ok(()),
+            foca.apply(Member::alive(ID::new_with_bump(2, 0)), &mut runtime)
+        );
+
+        assert_eq!(
+            Ok(()),
+            foca.apply(Member::alive(ID::new_with_bump(2, 1)), &mut runtime)
+        );
+
+        assert_eq!(1, foca.num_members());
+
+        todo!("continue");
+    }
+
+    #[test]
+    fn does_not_mark_renewed_identity_as_down() {
+        let (mut foca, probed, send_indirect_probe) = craft_probing_foca(1, config());
+        let mut runtime = InMemoryRuntime::new();
+        assert_eq!(1, foca.num_members());
+
+        // `probed` did NOT reply with an Ack before the timer
+        assert_eq!(Ok(()), foca.handle_timer(send_indirect_probe, &mut runtime));
+
+        // meanwhile, the member rejoined (same addr, but not the same id)
+        let bumped = probed.bump();
+        assert_ne!(probed, bumped);
+        assert_eq!(probed.addr(), bumped.addr());
+        assert_eq!(Ok(()), foca.apply(Member::alive(bumped), &mut runtime));
+        assert_eq!(1, foca.num_members());
+
+        runtime.clear();
+        // So by the time the ChangeSuspectToDown timer fires
+        assert_eq!(
+            Ok(()),
+            foca.handle_timer(
+                Timer::ChangeSuspectToDown {
+                    member_id: probed,
+                    incarnation: Incarnation::default(),
+                    token: foca.timer_token()
+                },
+                &mut runtime
+            )
+        );
+
+        // the member is NOT marked as down
+        assert_eq!(1, foca.num_members());
+        assert_eq!(foca.iter_members().next().unwrap(), &Member::alive(bumped));
     }
 }

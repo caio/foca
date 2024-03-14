@@ -36,6 +36,11 @@ impl ID {
         ID::new_with_bump(id, 0)
     }
 
+    pub(crate) fn bump(mut self) -> Self {
+        self.bump = self.bump.wrapping_add(1);
+        self
+    }
+
     pub(crate) fn new_with_bump(id: u8, bump: u8) -> Self {
         Self {
             addr: id,
