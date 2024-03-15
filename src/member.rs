@@ -263,9 +263,9 @@ where
 
     pub(crate) fn apply_existing_if<F: Fn(&Member<T>) -> bool>(
         &mut self,
-        update: Member<T>,
+        mut update: Member<T>,
         condition: F,
-    ) -> Option<ApplySummary> {
+    ) -> Option<ApplySummary<T>> {
         if let Some(known_member) = self
             .inner
             .iter_mut()
@@ -288,6 +288,7 @@ where
                         is_active_now: known_member.is_active(),
                         apply_successful: false,
                         changed_active_set: false,
+                        replaced_id: None,
                     });
                 }
                 tracing::trace!(
@@ -303,11 +304,14 @@ where
                     is_active_now: known_member.is_active(),
                     apply_successful: false,
                     changed_active_set: false,
+                    replaced_id: None,
                 });
             }
             let was_active = known_member.is_active();
+            let mut replaced_id = None;
             let apply_successful = if force_apply {
-                known_member.id = update.id;
+                core::mem::swap(&mut known_member.id, &mut update.id);
+                replaced_id = Some(update.id);
                 known_member.state = update.state;
                 known_member.incarnation = update.incarnation;
                 true
@@ -330,13 +334,14 @@ where
                 is_active_now,
                 apply_successful,
                 changed_active_set,
+                replaced_id,
             })
         } else {
             None
         }
     }
 
-    pub(crate) fn apply(&mut self, update: Member<T>, mut rng: impl Rng) -> ApplySummary {
+    pub(crate) fn apply(&mut self, update: Member<T>, mut rng: impl Rng) -> ApplySummary<T> {
         self.apply_existing_if(update.clone(), |_member| true)
             .unwrap_or_else(|| {
                 // Unknown member, we'll register it
@@ -361,6 +366,7 @@ where
                     apply_successful: true,
                     // Registering a new active member changes the active set
                     changed_active_set: is_active_now,
+                    replaced_id: None,
                 }
             })
     }
@@ -368,14 +374,17 @@ where
 
 #[derive(Debug, Clone, PartialEq)]
 #[must_use]
-pub(crate) struct ApplySummary {
+pub(crate) struct ApplySummary<T> {
     pub(crate) is_active_now: bool,
     pub(crate) apply_successful: bool,
     pub(crate) changed_active_set: bool,
+    pub(crate) replaced_id: Option<T>,
 }
 
 #[cfg(test)]
 mod tests {
+
+    use crate::Identity;
 
     use super::*;
 
@@ -596,7 +605,8 @@ mod tests {
             ApplySummary {
                 is_active_now: true,
                 apply_successful: true,
-                changed_active_set: true
+                changed_active_set: true,
+                replaced_id: None,
             },
             res,
         );
@@ -610,7 +620,8 @@ mod tests {
             ApplySummary {
                 is_active_now: true,
                 apply_successful: false,
-                changed_active_set: false
+                changed_active_set: false,
+                replaced_id: None,
             },
             res,
         );
@@ -623,7 +634,8 @@ mod tests {
             ApplySummary {
                 is_active_now: true,
                 apply_successful: true,
-                changed_active_set: false
+                changed_active_set: false,
+                replaced_id: None,
             },
             res,
         );
@@ -635,7 +647,8 @@ mod tests {
             ApplySummary {
                 is_active_now: false,
                 apply_successful: true,
-                changed_active_set: true
+                changed_active_set: true,
+                replaced_id: None,
             },
             res,
         );
@@ -648,7 +661,8 @@ mod tests {
             ApplySummary {
                 is_active_now: false,
                 apply_successful: true,
-                changed_active_set: false
+                changed_active_set: false,
+                replaced_id: None,
             },
             res,
         );
@@ -759,5 +773,33 @@ mod tests {
             member_id.0.parse::<usize>().expect("number") > 4
         });
         assert_eq!(vec![Member::suspect(Id("5"))], out);
+    }
+
+    #[test]
+    fn sets_replaced_id_on_addr_conflict() {
+        let id = crate::testing::ID::new(1).rejoinable();
+        let mut members = Members::new(Vec::from([
+            // 5 active members
+            Member::alive(id),
+        ]));
+
+        let renewed = id.renew().unwrap();
+        let summary = members
+            .apply_existing_if(Member::alive(renewed), |_| true)
+            .expect("member found");
+
+        assert!(summary.apply_successful);
+        assert_eq!(Some(id), summary.replaced_id);
+
+        let another = renewed.renew().unwrap();
+        let summary = members
+            .apply_existing_if(Member::alive(another), |_| false)
+            .expect("member found");
+
+        assert!(!summary.apply_successful);
+        assert_eq!(
+            None, summary.replaced_id,
+            "must not apply if condition fails"
+        );
     }
 }

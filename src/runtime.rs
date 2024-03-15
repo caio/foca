@@ -74,6 +74,9 @@ pub enum Notification<T> {
     /// Can only happen if `MemberUp(T)` happened before.
     MemberDown(T),
 
+    /// FIXME docs. better name?
+    Renamed(T, T),
+
     /// Foca's current identity is known by at least one active member
     /// of the cluster.
     ///

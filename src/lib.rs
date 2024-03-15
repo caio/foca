@@ -661,7 +661,7 @@ where
                             member.incarnation() == incarnation
                         })
                     {
-                        self.handle_apply_summary(&summary, as_down, &mut runtime)?;
+                        self.handle_apply_summary(summary, as_down, &mut runtime)?;
                         // Member went down we might need to adjust our internal state
                         self.adjust_connection_state(&mut runtime);
 
@@ -1091,18 +1091,20 @@ where
                 .members
                 .apply_existing_if(as_suspect.clone(), |_member| true)
             {
-                self.handle_apply_summary(&summary, as_suspect, &mut runtime)?;
+                let is_active_now = summary.is_active_now;
+                let apply_successful = summary.apply_successful;
+                self.handle_apply_summary(summary, as_suspect, &mut runtime)?;
 
                 // Now we ensure we change the member to Down if it
                 // isn't already inactive
-                if summary.is_active_now {
+                if is_active_now {
                     // We check for summary.apply_successful prior to logging
                     // because we may pick a member multiple times before the
                     // timer runs out.
                     // May lead to not logging at all if our knowledge of this
                     // member was already set as State::Suspect
                     #[cfg(feature = "tracing")]
-                    if summary.apply_successful {
+                    if apply_successful {
                         tracing::debug!(
                             member_id = ?failed.id(),
                             timeout = ?self.config.suspect_to_down_after,
@@ -1160,14 +1162,15 @@ where
     fn apply_update(&mut self, update: Member<T>, runtime: impl Runtime<T>) -> Result<bool> {
         debug_assert_ne!(&self.identity, update.id());
         let summary = self.members.apply(update.clone(), &mut self.rng);
-        self.handle_apply_summary(&summary, update, runtime)?;
+        let active = summary.is_active_now;
+        self.handle_apply_summary(summary, update, runtime)?;
 
-        Ok(summary.is_active_now)
+        Ok(active)
     }
 
     fn handle_apply_summary(
         &mut self,
-        summary: &ApplySummary,
+        summary: ApplySummary<T>,
         update: Member<T>,
         mut runtime: impl Runtime<T>,
     ) -> Result<()> {
@@ -1188,6 +1191,12 @@ where
             if !summary.is_active_now {
                 runtime.submit_after(Timer::RemoveDown(id.clone()), self.config.remove_down_after);
             }
+        }
+
+        if let Some(old) = summary.replaced_id {
+            #[cfg(feature = "tracing")]
+            tracing::debug!(previous_id=?old, member_id=?id, "Renamed");
+            runtime.notify(Notification::Renamed(old, id.clone()));
         }
 
         if summary.changed_active_set {
@@ -4028,5 +4037,65 @@ mod tests {
         assert_eq!(foca.iter_members().next().unwrap(), &Member::alive(bumped));
     }
 
-    // FIXME test force apply behavior, summary and notifications
+    #[test]
+    fn notifies_on_conflict_resolution() {
+        let mut foca = Foca::new(ID::new(1), config(), rng(), codec());
+        let mut runtime = InMemoryRuntime::new();
+
+        // Given a known member
+        let member = ID::new(2).rejoinable();
+        assert_eq!(Ok(()), foca.apply(Member::alive(member), &mut runtime));
+        assert_eq!(1, foca.num_members());
+
+        runtime.clear();
+
+        // Learning about its renewd id
+        let renewed = member.renew().expect("bumped");
+        assert_eq!(Ok(()), foca.apply(Member::alive(renewed), &mut runtime));
+        assert_eq!(1, foca.num_members());
+        // Should notify the runtime about the change
+        expect_notification!(runtime, Notification::Renamed(member, renewed));
+        // But no MemberUp notification should be fired, since
+        // previous addr was already active
+        reject_notification!(runtime, Notification::MemberUp(member));
+        reject_notification!(runtime, Notification::MemberUp(renewed));
+
+        runtime.clear();
+
+        // But if the renewed id is not active
+        let inactive = renewed.renew().expect("bumped");
+        assert_eq!(Ok(()), foca.apply(Member::down(inactive), &mut runtime));
+        assert_eq!(0, foca.num_members());
+        // We get notified of the rename
+        expect_notification!(runtime, Notification::Renamed(renewed, inactive));
+        // AND about the member going down with its new identity
+        expect_notification!(runtime, Notification::MemberDown(inactive));
+        // but nothing about the (now overriden, forgotten) previous one
+        reject_notification!(runtime, Notification::MemberDown(renewed));
+
+        runtime.clear();
+
+        // The inverse behaves similarly:
+        // Learning about a renewed active
+        let active = inactive.renew().expect("bumped");
+        assert_eq!(Ok(()), foca.apply(Member::suspect(active), &mut runtime));
+        assert_eq!(1, foca.num_members());
+        // Should notify about the rename
+        expect_notification!(runtime, Notification::Renamed(inactive, active));
+        // And about the member being active
+        expect_notification!(runtime, Notification::MemberUp(active));
+
+        runtime.clear();
+        // And if it learns about the previous ids again, regardless
+        // of their state, nothing happens
+        for m in [member, renewed, inactive] {
+            assert_eq!(Ok(()), foca.apply(Member::alive(m), &mut runtime));
+            assert_eq!(1, foca.num_members());
+            assert!(runtime.is_empty());
+
+            assert_eq!(Ok(()), foca.apply(Member::down(m), &mut runtime));
+            assert_eq!(1, foca.num_members());
+            assert!(runtime.is_empty());
+        }
+    }
 }

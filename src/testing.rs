@@ -379,6 +379,10 @@ impl InMemoryRuntime {
         self.to_schedule.clear();
     }
 
+    pub(crate) fn is_empty(&self) -> bool {
+        self.notifications.is_empty() && self.to_send.is_empty() && self.to_schedule.is_empty()
+    }
+
     pub(crate) fn take_all_data(&mut self) -> Vec<(ID, Bytes)> {
         core::mem::take(&mut self.to_send)
     }
