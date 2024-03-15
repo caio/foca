@@ -1084,8 +1084,8 @@ where
             //  3. The member is now Down, either by leaving voluntarily or by
             //     being declared down by another cluster member
             //
-            //  4. The member doesn't exist anymore, which shouldn't actually
-            //     happen...?
+            //  4. The member doesn't exist anymore. i.e. a newer identity with
+            //     the same address has appeared in the cluster
             let as_suspect = Member::new(failed.id().clone(), failed.incarnation(), State::Suspect);
             if let Some(summary) = self
                 .members
