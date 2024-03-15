@@ -279,11 +279,6 @@ where
                 // state is replaced (it's essentially a rejoin)
                 if known_member.id.win_addr_conflict(&update.id) {
                     // update lost conflict, it's junk
-                    tracing::trace!(
-                        update = tracing::field::debug(&update),
-                        existing = tracing::field::debug(&known_member),
-                        "existing won conflict resolution, nothing to do"
-                    );
                     return Some(ApplySummary {
                         is_active_now: known_member.is_active(),
                         apply_successful: false,
@@ -291,11 +286,6 @@ where
                         replaced_id: None,
                     });
                 }
-                tracing::trace!(
-                    update = tracing::field::debug(&update),
-                    existing = tracing::field::debug(&known_member),
-                    "update won conflict resolution"
-                );
                 force_apply = true;
             }
 
