@@ -1,15 +1,8 @@
 /* Any copyright is dedicated to the Public Domain.
  * https://creativecommons.org/publicdomain/zero/1.0/ */
 use std::{
-    cmp::Reverse,
-    collections::{BinaryHeap, HashMap},
-    fs::File,
-    io::Write,
-    net::SocketAddr,
-    path::Path,
-    str::FromStr,
-    sync::Arc,
-    time::Duration,
+    cmp::Reverse, collections::BinaryHeap, fs::File, io::Write, net::SocketAddr, path::Path,
+    str::FromStr, sync::Arc, time::Duration,
 };
 
 use tracing_subscriber::{
@@ -207,70 +200,6 @@ impl<T> AccumulatingRuntime<T> {
     }
 }
 
-// Our identity is a composite of a socket address and extra
-// stuff, but downstream consumers likely only care about
-// the address part.
-//
-// It's perfectly valid to temprarily have more than one member
-// pointing at the same address (with a different `bump`): one
-// could, for example: join the cluster, ^C the program and
-// immediatelly join again. Before Foca detects that the previous
-// identity is down we'll receive a notification about this new
-// identity going up.
-//
-// So what we maintain here is a HashMap of addresses to an
-// occurence count:
-//
-//  * The count will most of the time be 1;
-//  * But in scenarios like above it may reach 2. Meaning:
-//    something made the address change identities, but
-//    it's still active
-//  * And when the count reaches 0 the address is actually
-//    down, so we remove it
-//
-struct Members(HashMap<SocketAddr, u8>);
-
-impl Members {
-    fn new() -> Self {
-        Self(HashMap::new())
-    }
-
-    // A result of `true` means that the effective list of
-    // cluster member addresses has changed
-    fn add_member(&mut self, member: ID) -> bool {
-        // Notice how we don't care at all about the `bump` part.
-        // It's only useful for Foca.
-        let counter = self.0.entry(member.addr).or_insert(0);
-
-        *counter += 1;
-
-        counter == &1
-    }
-
-    // A result of `true` means that the effective list of
-    // cluster member addresses has changed
-    fn remove_member(&mut self, member: ID) -> bool {
-        let effectivelly_down = if let Some(counter) = self.0.get_mut(&member.addr) {
-            *counter -= 1;
-
-            counter == &0
-        } else {
-            // Shouldn't happen
-            false
-        };
-
-        if effectivelly_down {
-            self.0.remove(&member.addr);
-        }
-
-        effectivelly_down
-    }
-
-    fn addrs(&self) -> impl Iterator<Item = &SocketAddr> {
-        self.0.keys()
-    }
-}
-
 fn do_the_file_replace_dance<'a>(
     fname: &str,
     addrs: impl Iterator<Item = &'a SocketAddr>,
@@ -361,7 +290,6 @@ async fn main() -> Result<(), anyhow::Error> {
     let scheduler = launch_scheduler(tx_foca.clone()).await;
 
     let mut runtime = AccumulatingRuntime::new();
-    let mut members = Members::new();
     tokio::spawn(async move {
         while let Some(input) = rx_foca.recv().await {
             debug_assert_eq!(0, runtime.backlog());
@@ -418,9 +346,8 @@ async fn main() -> Result<(), anyhow::Error> {
             let mut active_list_has_changed = false;
             while let Some(notification) = runtime.notifications.pop() {
                 match notification {
-                    Notification::MemberUp(id) => active_list_has_changed |= members.add_member(id),
-                    Notification::MemberDown(id) => {
-                        active_list_has_changed |= members.remove_member(id)
+                    Notification::MemberUp(_) | Notification::MemberDown(_) => {
+                        active_list_has_changed = true
                     }
                     Notification::Idle => {
                         tracing::info!("cluster empty");
@@ -433,7 +360,7 @@ async fn main() -> Result<(), anyhow::Error> {
             }
 
             if active_list_has_changed {
-                do_the_file_replace_dance(&filename, members.addrs())
+                do_the_file_replace_dance(&filename, foca.iter_members().map(|m| &m.id().addr))
                     .expect("Can write the file alright");
             }
         }
