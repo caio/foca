@@ -1092,6 +1092,7 @@ where
                 .apply_existing_if(as_suspect.clone(), |_member| true)
             {
                 let is_active_now = summary.is_active_now;
+                #[cfg_attr(not(feature = "tracing"), allow(unused_variables))]
                 let apply_successful = summary.apply_successful;
                 self.handle_apply_summary(summary, as_suspect, &mut runtime)?;
 
