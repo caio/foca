@@ -53,18 +53,13 @@ enum Tag {
     },
 }
 
-struct Broadcast {
-    tag: Tag,
-    data: Bytes,
-}
-
-impl Invalidates for Broadcast {
+impl Invalidates for Tag {
     // I think this is where confusion happens: It's about invalidating
     // items ALREADY in the broadcast buffer, i.e.: foca uses this
     // to manage its broadcast buffer so it can stop talking about unecessary
     // (invalidated) data.
     fn invalidates(&self, other: &Self) -> bool {
-        match (self.tag, other.tag) {
+        match (self, other) {
             // The only time we care about invalidation is when we have
             // a new nodeconfig for a node and are already broadcasting
             // a config about this same node. We need to decide which
@@ -86,56 +81,17 @@ impl Invalidates for Broadcast {
     }
 }
 
-impl AsRef<[u8]> for Broadcast {
-    fn as_ref(&self) -> &[u8] {
-        self.data.as_ref()
-    }
-}
-
 // XXX Use actually useful types
 type Operation = String;
 type NodeConfig = String;
 
 struct Handler {
-    buffer: BytesMut,
     seen_op_ids: HashSet<Uuid>,
     node_config: HashMap<SocketAddr, (SystemTime, NodeConfig)>,
 }
 
-impl Handler {
-    fn craft_broadcast<T: Serialize>(&mut self, tag: Tag, item: T) -> Broadcast {
-        self.buffer.reserve(1400);
-        let mut crafted = self.buffer.split();
-
-        // The payload length. We'll circle back and update it to
-        // a real value at the end
-        crafted.put_u16(0);
-
-        let mut writer = crafted.writer();
-
-        let opts = bincode::DefaultOptions::new();
-        opts.serialize_into(&mut writer, &tag)
-            .expect("error handling");
-
-        opts.serialize_into(&mut writer, &item)
-            .expect("error handling");
-
-        let mut crafted = writer.into_inner();
-        let final_len = crafted.len() as u16;
-        (&mut crafted[0..1]).put_u16(final_len);
-
-        // Notice that `tag` here is already inside `data`,
-        // we keep a copy outside to make it easier when implementing
-        // `Invalidates`
-        Broadcast {
-            tag,
-            data: crafted.freeze(),
-        }
-    }
-}
-
 impl<T> BroadcastHandler<T> for Handler {
-    type Key = Broadcast;
+    type Key = Tag;
     type Error = String;
 
     fn receive_item(
@@ -143,18 +99,13 @@ impl<T> BroadcastHandler<T> for Handler {
         data: &[u8],
         _sender: Option<&T>,
     ) -> Result<Option<Self::Key>, Self::Error> {
-        let mut cursor = data;
-        let len = cursor.get_u16();
-        if cursor.remaining() < usize::from(len) {
-            return Err(String::from("Malformed packet"));
-        }
-
-        // And a tag/header that tells us what the remaining
-        // bytes actually are. We leave the blob untouched until
-        // we decide wether we care about it.
+        // There is exactly one broadcast within `data`
+        // from craft_broadcast(), first comes the tag
         let opts = bincode::DefaultOptions::new();
-        let mut reader = cursor.reader();
-        let tag: Tag = opts.deserialize_from(&mut reader).unwrap();
+        let mut reader = data.reader();
+        let tag: Tag = opts
+            .deserialize_from(&mut reader)
+            .map_err(|err| format!("bad data: {err}"))?;
 
         // Now `reader` points at the actual useful data in
         // the buffer, immediatelly after the tag. We can finally
@@ -168,39 +119,42 @@ impl<T> BroadcastHandler<T> for Handler {
 
                 self.seen_op_ids.insert(operation_id);
 
-                let op: Operation = opts.deserialize_from(&mut reader).expect("error handling");
-                {
-                    // This is where foca stops caring
-                    // If it were me, I'd stuff the bytes as-is into a channel
-                    // and have a separate task/thread consuming it.
-                    do_something_with_the_data()
-                }
+                let payload: Operation = opts
+                    .deserialize_from(&mut reader)
+                    .map_err(|err| format!("bad operation payload: {err}"))?;
+
+                // Do something real with the data
+                tracing::info!("Operation {operation_id} {payload}");
 
                 // This WAS new information, so we signal it to foca
-                let broadcast = self.craft_broadcast(tag, op);
-                Ok(Some(broadcast))
+                Ok(Some(tag))
             }
             Tag::NodeConfig { node, version } => {
-                if let Some((current_version, _)) = self.node_config.get(&node) {
-                    if &version > current_version {
-                        let conf: NodeConfig =
-                            opts.deserialize_from(&mut reader).expect("error handling");
-                        Ok(Some(self.craft_broadcast(tag, conf)))
-                    } else {
-                        Ok(None)
+                let new_data = self
+                    .node_config
+                    .get(&node)
+                    // If we already have info about the node, check if the version
+                    // is newer
+                    .map(|(cur_version, _)| cur_version < &version)
+                    .unwrap_or(true);
+
+                if new_data {
+                    let payload: NodeConfig = opts
+                        .deserialize_from(&mut reader)
+                        .map_err(|err| format!("bad nodeconfig payload: {err}"))?;
+
+                    tracing::info!(?node, ?version, ?payload, "new data");
+                    if let Some(previous) = self.node_config.insert(node, (version, payload)) {
+                        tracing::debug!(?previous, "old node data");
                     }
+
+                    Ok(Some(tag))
                 } else {
-                    let conf: NodeConfig =
-                        opts.deserialize_from(&mut reader).expect("error handling");
-                    Ok(Some(self.craft_broadcast(tag, conf)))
+                    Ok(None)
                 }
             }
         }
     }
-}
-
-fn do_something_with_the_data() {
-    unimplemented!()
 }
 
 fn main() {}
