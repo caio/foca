@@ -586,7 +586,7 @@ where
             );
             Ok(())
         } else {
-            panic!("what")
+            Err(Error::MalformedPacket)
         }
     }
 
