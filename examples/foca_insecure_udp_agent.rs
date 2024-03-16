@@ -194,7 +194,7 @@ async fn main() -> Result<(), anyhow::Error> {
         )
         .init();
 
-    tracing::info!(?params, "Started");
+    tracing::info!(params = tracing::field::debug(&params), "Started");
 
     let CliParams {
         bind_addr,
@@ -261,7 +261,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 // And we'd decide what to do with each error, but Foca
                 // is pretty tolerant so we just log them and pretend
                 // all is fine
-                tracing::error!(?error, "Ignored error");
+                tracing::error!(error = tracing::field::debug(error), "Ignored error");
             }
 
             // Now we react to what happened.
@@ -309,7 +309,7 @@ async fn main() -> Result<(), anyhow::Error> {
                     }
 
                     other => {
-                        tracing::debug!(notification = ?other, "Unhandled")
+                        tracing::debug!(notification = tracing::field::debug(other), "Unhandled")
                     }
                 }
             }
@@ -367,7 +367,7 @@ async fn launch_scheduler(
                 ($event:expr) => {
                     if let Err(err) = timer_tx.send(Input::Event($event)).await {
                         tracing::error!(
-                            ?err,
+                            err = tracing::field::debug(err),
                             "Error submitting timer event. Shutting down timer task"
                         );
                         rx.close();

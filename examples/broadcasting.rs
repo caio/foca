@@ -119,6 +119,7 @@ impl<T> BroadcastHandler<T> for Handler {
 
                 self.seen_op_ids.insert(operation_id);
 
+                #[cfg_attr(not(feature = "tracing"), allow(unused_variables))]
                 let payload: Operation = opts
                     .deserialize_from(&mut reader)
                     .map_err(|err| format!("bad operation payload: {err}"))?;
@@ -145,12 +146,20 @@ impl<T> BroadcastHandler<T> for Handler {
                         .map_err(|err| format!("bad nodeconfig payload: {err}"))?;
 
                     #[cfg(feature = "tracing")]
-                    tracing::info!(?node, ?version, ?payload, "new data");
+                    tracing::info!(
+                        node = tracing::field::debug(node),
+                        version = tracing::field::debug(version),
+                        payload = tracing::field::debug(&payload),
+                        "new data"
+                    );
 
                     #[cfg_attr(not(feature = "tracing"), allow(unused_variables))]
                     if let Some(previous) = self.node_config.insert(node, (version, payload)) {
                         #[cfg(feature = "tracing")]
-                        tracing::debug!(?previous, "old node data");
+                        tracing::debug!(
+                            previous = tracing::field::debug(&previous),
+                            "old node data"
+                        );
                     }
 
                     Ok(Some(tag))

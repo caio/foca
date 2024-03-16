@@ -325,7 +325,11 @@ where
             self.reset();
 
             #[cfg(feature = "tracing")]
-            tracing::debug!(?self, ?previous_id, "changed identity");
+            tracing::debug!(
+                self = tracing::field::debug(&self),
+                previous_id = tracing::field::debug(&previous_id),
+                "changed identity"
+            );
 
             // If our previous identity wasn't known as Down already,
             // we'll declare it ourselves
@@ -415,8 +419,8 @@ where
                 #[cfg(feature = "tracing")]
                 if update.is_active() {
                     tracing::trace!(
-                        ?self,
-                        ?update,
+                        self = tracing::field::debug(&self),
+                        update = tracing::field::debug(&update),
                         "update about identity with same prefix as ours, declaring it down"
                     );
                 }
@@ -593,7 +597,8 @@ where
     /// See [`Runtime::submit_after`].
     pub fn handle_timer(&mut self, event: Timer<T>, mut runtime: impl Runtime<T>) -> Result<()> {
         #[cfg(feature = "tracing")]
-        let _span = tracing::trace_span!("handle_timer", ?event).entered();
+        let _span =
+            tracing::trace_span!("handle_timer", event = tracing::field::debug(&event)).entered();
         match event {
             Timer::SendIndirectProbe { probed_id, token } => {
                 // Changing identities in the middle of the probe cycle may
@@ -612,14 +617,20 @@ where
 
                 if !self.probe.is_probing(&probed_id) {
                     #[cfg(feature = "tracing")]
-                    tracing::trace!(?probed_id, "Member not being probed");
+                    tracing::trace!(
+                        probed_id = tracing::field::debug(&probed_id),
+                        "Member not being probed"
+                    );
                     return Ok(());
                 }
 
                 if self.probe.succeeded() {
                     // We received an Ack already, nothing else to do
                     #[cfg(feature = "tracing")]
-                    tracing::trace!(?probed_id, "Probe succeeded, no need for indirect cycle");
+                    tracing::trace!(
+                        probed_id = tracing::field::debug(&probed_id),
+                        "Probe succeeded, no need for indirect cycle"
+                    );
                     return Ok(());
                 }
 
@@ -633,7 +644,7 @@ where
 
                 #[cfg(feature = "tracing")]
                 tracing::debug!(
-                    ?probed_id,
+                    probed_id = tracing::field::debug(&probed_id),
                     "Member didn't respond to ping in time, starting indirect probe cycle"
                 );
 
@@ -693,7 +704,7 @@ where
                 )]
                 if let Some(_removed) = self.members.remove_if_down(&down) {
                     #[cfg(feature = "tracing")]
-                    tracing::trace!(?down, "Member removed");
+                    tracing::trace!(down = tracing::field::debug(&down), "Member removed");
                 }
 
                 Ok(())
@@ -796,7 +807,10 @@ where
             Err(Error::InvalidConfig)
         } else {
             #[cfg(feature = "tracing")]
-            tracing::trace!(?config, "Configuration changed");
+            tracing::trace!(
+                config = tracing::field::debug(&config),
+                "Configuration changed"
+            );
 
             self.config = config;
             Ok(())
@@ -947,7 +961,7 @@ where
                 #[cfg_attr(not(feature = "tracing"), allow(clippy::if_same_then_else))]
                 if self.probe.receive_ack(&src, probe_number) {
                     #[cfg(feature = "tracing")]
-                    tracing::debug!(probed_id=?src, "Probe success");
+                    tracing::debug!(probed_id = tracing::field::debug(&src), "Probe success");
                 } else {
                     // May be triggered by a member that slows down (say, you ^Z
                     // the proccess and `fg` back after a while).
@@ -1017,7 +1031,7 @@ where
                 if self.probe.receive_indirect_ack(&src, probe_number) {
                     #[cfg(feature = "tracing")]
                     tracing::debug!(
-                        probed_id = ?self.probe.target(),
+                        probed_id = tracing::field::debug(self.probe.target()),
                         "Indirect probe success"
                     );
                 } else {
@@ -1074,7 +1088,7 @@ where
         if !self.probe.validate() {
             #[cfg(feature = "tracing")]
             tracing::trace!(
-                probed_id = ?self.probe.target(),
+                probed_id = tracing::field::debug(self.probe.target()),
                 "Recovering: Probe cycle didn't complete correctly"
             );
             // Probe has invalid state. We'll reset and submit another timer
@@ -1117,8 +1131,8 @@ where
                     #[cfg(feature = "tracing")]
                     if apply_successful {
                         tracing::debug!(
-                            member_id = ?failed.id(),
-                            timeout = ?self.config.suspect_to_down_after,
+                            member_id = tracing::field::debug(failed.id()),
+                            timeout = tracing::field::debug(self.config.suspect_to_down_after),
                             "Member failed probe, will declare it down if it doesn't react"
                         );
                     }
@@ -1139,7 +1153,7 @@ where
             let probe_number = self.probe.start(member.clone());
 
             #[cfg(feature = "tracing")]
-            tracing::debug!(?member_id, "Probe start");
+            tracing::debug!(member_id = tracing::field::debug(&member_id), "Probe start");
 
             self.send_message(member_id.clone(), Message::Ping(probe_number), &mut runtime)?;
 
@@ -1189,7 +1203,11 @@ where
 
         if summary.apply_successful {
             #[cfg(feature = "tracing")]
-            tracing::trace!(?update, ?summary, "Update applied");
+            tracing::trace!(
+                update = tracing::field::debug(&update),
+                summary = tracing::field::debug(&summary),
+                "Update applied"
+            );
 
             // Cluster state changed, start broadcasting it
             let addr = Addr(id.addr());
@@ -1206,18 +1224,22 @@ where
 
         if let Some(old) = summary.replaced_id {
             #[cfg(feature = "tracing")]
-            tracing::debug!(previous_id=?old, member_id=?id, "Renamed");
+            tracing::debug!(
+                previous_id = tracing::field::debug(&old),
+                member_id = tracing::field::debug(&id),
+                "Renamed"
+            );
             runtime.notify(Notification::Renamed(old, id.clone()));
         }
 
         if summary.changed_active_set {
             if summary.is_active_now {
                 #[cfg(feature = "tracing")]
-                tracing::debug!(member_id=?id, "Member up");
+                tracing::debug!(member_id = tracing::field::debug(&id), "Member up");
                 runtime.notify(Notification::MemberUp(id));
             } else {
                 #[cfg(feature = "tracing")]
-                tracing::debug!(member_id=?id, "Member down");
+                tracing::debug!(member_id = tracing::field::debug(&id), "Member down");
                 runtime.notify(Notification::MemberDown(id));
             }
         }
@@ -1340,7 +1362,7 @@ where
         #[cfg(feature = "tracing")]
         let span = tracing::trace_span!(
             "send_message",
-            ?header,
+            header = tracing::field::debug(&header),
             num_updates = tracing::field::Empty,
             num_broadcasts = tracing::field::Empty,
             len = tracing::field::Empty,
@@ -1483,7 +1505,7 @@ where
                     Ordering::Greater => {
                         #[cfg(feature = "tracing")]
                         tracing::trace!(
-                            ?self.incarnation,
+                            incarnation = self.incarnation,
                             suspected = incarnation,
                             "Received suspicion about old incarnation",
                         );
@@ -1499,7 +1521,7 @@ where
                     Ordering::Less => {
                         #[cfg(feature = "tracing")]
                         tracing::debug!(
-                            ?self.incarnation,
+                            incarnation = self.incarnation,
                             suspected = incarnation,
                             "Suspicion on incarnation higher than current",
                         );
