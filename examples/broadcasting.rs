@@ -124,6 +124,7 @@ impl<T> BroadcastHandler<T> for Handler {
                     .map_err(|err| format!("bad operation payload: {err}"))?;
 
                 // Do something real with the data
+                #[cfg(feature = "tracing")]
                 tracing::info!("Operation {operation_id} {payload}");
 
                 // This WAS new information, so we signal it to foca
@@ -143,8 +144,12 @@ impl<T> BroadcastHandler<T> for Handler {
                         .deserialize_from(&mut reader)
                         .map_err(|err| format!("bad nodeconfig payload: {err}"))?;
 
+                    #[cfg(feature = "tracing")]
                     tracing::info!(?node, ?version, ?payload, "new data");
+
+                    #[cfg_attr(not(feature = "tracing"), allow(unused_variables))]
                     if let Some(previous) = self.node_config.insert(node, (version, payload)) {
+                        #[cfg(feature = "tracing")]
                         tracing::debug!(?previous, "old node data");
                     }
 
