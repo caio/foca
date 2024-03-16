@@ -4,7 +4,7 @@
 use alloc::vec::Vec;
 use core::{cmp::Ordering, fmt};
 
-use bytes::{Buf, BufMut};
+use bytes::BufMut;
 
 /// A type capable of decoding a (associated) broadcast from a buffer
 /// and deciding whether to keep disseminating it for other members
@@ -20,7 +20,7 @@ pub trait BroadcastHandler<T> {
     ///
     /// The `AsRef<[u8]>` part is what gets sent over the wire, which
     /// [`Self::receive_item`] is supposed to decode.
-    type Broadcast: Invalidates;
+    type Key: Invalidates;
 
     /// The error type that `receive_item` may emit. Will be wrapped
     /// by [`crate::Error`].
@@ -53,9 +53,9 @@ pub trait BroadcastHandler<T> {
     /// Implementations may assume the data in the buffer is contiguous.
     fn receive_item(
         &mut self,
-        data: impl Buf,
+        data: &[u8],
         sender: Option<&T>,
-    ) -> Result<Option<Self::Broadcast>, Self::Error>;
+    ) -> Result<Option<Self::Key>, Self::Error>;
 
     /// Decides whether Foca should add broadcast data to the message
     /// it's about to send to active member `T`.
@@ -134,6 +134,7 @@ where
     }
 
     pub(crate) fn add_or_replace(&mut self, item: T, data: Vec<u8>, max_tx: usize) {
+        debug_assert!(max_tx > 0);
         self.flip.retain(|node| !item.invalidates(&node.item));
         self.flip.push(Entry {
             remaining_tx: max_tx,
@@ -161,6 +162,45 @@ where
                 num_taken += 1;
                 remaining -= 1;
 
+                buffer.put_slice(&node.data);
+                node.remaining_tx -= 1;
+            }
+
+            if node.remaining_tx > 0 {
+                self.flop.push(node);
+            }
+        }
+
+        self.flip.append(&mut self.flop);
+
+        num_taken
+    }
+
+    pub(crate) fn fill_with_len_prefix(
+        &mut self,
+        mut buffer: impl BufMut,
+        max_items: usize,
+    ) -> usize {
+        if self.flip.is_empty() {
+            return 0;
+        }
+        debug_assert!(self.flop.is_empty());
+
+        let mut num_taken = 0;
+        let mut remaining = max_items;
+
+        while buffer.has_remaining_mut() && remaining > 0 {
+            let Some(mut node) = self.flip.pop() else {
+                break;
+            };
+            debug_assert!(node.remaining_tx > 0);
+
+            if buffer.remaining_mut() >= node.data.len() + 2 {
+                num_taken += 1;
+                remaining -= 1;
+
+                debug_assert!(node.data.len() <= core::u16::MAX as usize);
+                buffer.put_u16(node.data.len() as u16);
                 buffer.put_slice(&node.data);
                 node.remaining_tx -= 1;
             }
@@ -330,5 +370,33 @@ mod tests {
 
         let num_items = piggyback.fill(&mut buf, 2);
         assert_eq!(2, num_items);
+    }
+
+    #[test]
+    fn fill_with_len_prefix() {
+        let mut bcs = Broadcasts::new();
+
+        bcs.add_or_replace(Key("fo"), b"foo".to_vec(), 10);
+        bcs.add_or_replace(Key("ba"), b"barr".to_vec(), 10);
+        bcs.add_or_replace(Key("ba"), b"bazz".to_vec(), 10);
+
+        let mut buf = Vec::new();
+        let num_items = bcs.fill_with_len_prefix(&mut buf, 0);
+
+        assert_eq!(0, num_items);
+        assert!(buf.is_empty());
+
+        let num_items = bcs.fill_with_len_prefix(&mut buf, 2);
+        assert_eq!(2, num_items);
+
+        use bytes::Buf;
+        let mut buf = &buf[..];
+        assert_eq!(4, buf.get_u16());
+        assert_eq!(&b"bazz"[..], &buf[..4]);
+        buf.advance(4);
+        assert_eq!(3, buf.get_u16());
+        assert_eq!(&b"foo"[..], &buf[..3]);
+        buf.advance(3);
+        assert!(buf.is_empty());
     }
 }

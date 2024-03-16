@@ -202,7 +202,7 @@ pub struct Foca<T: Identity, C, RNG, B: BroadcastHandler<T>> {
     updates: Broadcasts<Addr<T::Addr>>,
 
     broadcast_handler: B,
-    custom_broadcasts: Broadcasts<B::Broadcast>,
+    custom_broadcasts: Broadcasts<B::Key>,
 }
 
 impl<T, C, RNG> Foca<T, C, RNG, NoCustomBroadcast>
@@ -564,18 +564,30 @@ where
     ///
     /// Calls into this instance's `BroadcastHandler` and reacts accordingly.
     pub fn add_broadcast(&mut self, data: &[u8]) -> Result<()> {
-        // NOTE: Receiving B::Broadcast instead of a byte slice would make it
-        //       look more convenient, however it gets in the way when
-        //       implementing more ergonomic interfaces (say: an async driver)
-        //       it forces everything to know the exact concrete type of
-        //       the broadcast. So... maybe revisit this decision later?
+        if data.is_empty() {
+            return Err(Error::MalformedPacket);
+        }
 
         // Not considering the whole header
         if data.len() > self.config.max_packet_size.get() {
             return Err(Error::DataTooBig);
         }
 
-        self.handle_custom_broadcasts(data, None)
+        if let Some(key) = self
+            .broadcast_handler
+            .receive_item(data, None)
+            .map_err(anyhow::Error::msg)
+            .map_err(Error::CustomBroadcast)?
+        {
+            self.custom_broadcasts.add_or_replace(
+                key,
+                data.to_vec(),
+                self.config.max_transmissions.get().into(),
+            );
+            Ok(())
+        } else {
+            panic!("what")
+        }
     }
 
     /// React to a previously scheduled timer event.
@@ -1215,29 +1227,40 @@ where
         Ok(())
     }
 
-    fn handle_custom_broadcasts(&mut self, mut data: impl Buf, sender: Option<&T>) -> Result<()> {
-        #[cfg(feature = "tracing")]
-        if data.has_remaining() {
-            tracing::trace!(len = data.remaining(), "handle_custom_broadcasts");
+    fn handle_custom_broadcasts(&mut self, mut data: &[u8], sender: Option<&T>) -> Result<()> {
+        if !data.is_empty() && data.len() < 3 {
+            return Err(Error::MalformedPacket);
         }
-        while data.has_remaining() {
-            if let Some(_broadcast) = self
+
+        while data.remaining() > 2 {
+            let pkt_len = data.get_u16() as usize;
+            if pkt_len == 0 || data.len() < pkt_len {
+                return Err(Error::MalformedPacket);
+            }
+            let pkt = &data[..pkt_len];
+            if let Some(key) = self
                 .broadcast_handler
-                .receive_item(&mut data, sender)
+                .receive_item(pkt, sender)
                 .map_err(anyhow::Error::msg)
                 .map_err(Error::CustomBroadcast)?
             {
                 #[cfg(feature = "tracing")]
-                tracing::trace!("received broadcast item");
+                tracing::trace!(len = pkt_len, "received broadcast item");
 
-                todo!("FIX CUSTOM BROADCASTS");
-
-                // self.custom_broadcasts
-                //     .add_or_replace(broadcast, self.config.max_transmissions.get().into());
+                self.custom_broadcasts.add_or_replace(
+                    key,
+                    pkt.to_vec(),
+                    self.config.max_transmissions.get().into(),
+                );
             }
+            data.advance(pkt_len);
         }
 
-        Ok(())
+        if data.has_remaining() {
+            Err(Error::MalformedPacket)
+        } else {
+            Ok(())
+        }
     }
 
     fn become_disconnected(&mut self, mut runtime: impl Runtime<T>) {
@@ -1423,7 +1446,9 @@ where
             // Fill the remaining space in the buffer with custom
             // broadcasts, if any
             #[cfg_attr(not(feature = "tracing"), allow(unused_variables))]
-            let num_broadcasts = self.custom_broadcasts.fill(&mut buf, usize::MAX);
+            let num_broadcasts = self
+                .custom_broadcasts
+                .fill_with_len_prefix(&mut buf, usize::MAX);
             #[cfg(feature = "tracing")]
             span.record("num_broadcasts", num_broadcasts);
         }
@@ -1583,14 +1608,14 @@ impl fmt::Display for BroadcastsDisabledError {
 impl std::error::Error for BroadcastsDisabledError {}
 
 impl<T> BroadcastHandler<T> for NoCustomBroadcast {
-    type Broadcast = &'static [u8];
+    type Key = &'static [u8];
     type Error = BroadcastsDisabledError;
 
     fn receive_item(
         &mut self,
-        _data: impl Buf,
+        _data: &[u8],
         _sender: Option<&T>,
-    ) -> core::result::Result<Option<Self::Broadcast>, Self::Error> {
+    ) -> core::result::Result<Option<Self::Key>, Self::Error> {
         Err(BroadcastsDisabledError)
     }
 }
@@ -3282,15 +3307,12 @@ mod tests {
         bad_data.push(0);
 
         assert_eq!(
-            Err(Error::CustomBroadcast(anyhow::Error::msg(
-                BroadcastsDisabledError
-            ))),
+            Err(Error::MalformedPacket),
             foca.handle_data(bad_data.as_ref(), InMemoryRuntime::new()),
         );
     }
 
     #[test]
-    #[ignore]
     fn custom_broadcast() {
         // Here we'll do some basic testing of the custom broadcast
         // functionality.
@@ -3358,15 +3380,15 @@ mod tests {
         struct Handler(BTreeMap<u64, u16>);
 
         impl BroadcastHandler<ID> for Handler {
-            type Broadcast = VersionedKey;
+            type Key = VersionedKey;
 
             type Error = &'static str;
 
             fn receive_item(
                 &mut self,
-                data: impl Buf,
+                data: &[u8],
                 _sender: Option<&ID>,
-            ) -> core::result::Result<Option<Self::Broadcast>, Self::Error> {
+            ) -> core::result::Result<Option<Self::Key>, Self::Error> {
                 let decoded = VersionedKey::from_bytes(data)?;
 
                 let is_new_information = self
@@ -3400,7 +3422,7 @@ mod tests {
         );
 
         assert!(
-            foca.add_broadcast(b"hue").is_err(),
+            foca.add_broadcast(b"huehue").is_err(),
             "Adding garbage shouldn't work"
         );
 
@@ -3432,6 +3454,8 @@ mod tests {
             Ok(()),
             foca.add_broadcast(VersionedKey::new(710, 1).as_ref()),
         );
+
+        assert_eq!(2, foca.custom_broadcast_backlog(),);
 
         // Now let's see if the custom broadcasts actually get
         // disseminated.

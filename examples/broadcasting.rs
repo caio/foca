@@ -7,7 +7,7 @@ use std::{
 };
 
 use bincode::Options;
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::{Buf, BufMut, Bytes, BytesMut};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -135,19 +135,14 @@ impl Handler {
 }
 
 impl<T> BroadcastHandler<T> for Handler {
-    type Broadcast = Broadcast;
+    type Key = Broadcast;
     type Error = String;
 
     fn receive_item(
         &mut self,
-        data: impl bytes::Buf,
+        data: &[u8],
         _sender: Option<&T>,
-    ) -> Result<Option<Self::Broadcast>, Self::Error> {
-        // Broadcast payload is u16-length prefixed
-        if data.remaining() < 2 {
-            return Err(String::from("Not enough bytes"));
-        }
-
+    ) -> Result<Option<Self::Key>, Self::Error> {
         let mut cursor = data;
         let len = cursor.get_u16();
         if cursor.remaining() < usize::from(len) {
