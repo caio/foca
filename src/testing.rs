@@ -2,11 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 use alloc::vec::Vec;
-use core::time::Duration;
 
-use bytes::{Buf, BufMut, Bytes};
+use bytes::{Buf, BufMut};
 
-use crate::{Codec, Header, Identity, Member, Message, Notification, Runtime, State, Timer};
+use crate::{Codec, Header, Identity, Member, Message, State};
 
 #[derive(Debug, Clone, Copy, PartialOrd, Ord)]
 pub(crate) struct ID {
@@ -354,91 +353,6 @@ impl Codec<ID> for BadCodec {
 
     fn decode_member(&mut self, mut buf: impl Buf) -> Result<Member<ID>, Self::Error> {
         BadCodec::decode_member(self, &mut buf)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct InMemoryRuntime {
-    notifications: Vec<Notification<ID>>,
-    to_send: Vec<(ID, Bytes)>,
-    to_schedule: Vec<(Timer<ID>, Duration)>,
-}
-
-impl InMemoryRuntime {
-    pub(crate) fn new() -> Self {
-        Self {
-            notifications: Vec::new(),
-            to_send: Vec::new(),
-            to_schedule: Vec::new(),
-        }
-    }
-
-    pub(crate) fn clear(&mut self) {
-        self.notifications.clear();
-        self.to_send.clear();
-        self.to_schedule.clear();
-    }
-
-    pub(crate) fn is_empty(&self) -> bool {
-        self.notifications.is_empty() && self.to_send.is_empty() && self.to_schedule.is_empty()
-    }
-
-    pub(crate) fn take_all_data(&mut self) -> Vec<(ID, Bytes)> {
-        core::mem::take(&mut self.to_send)
-    }
-
-    pub(crate) fn take_data(&mut self, dst: ID) -> Option<Bytes> {
-        let position = self.to_send.iter().position(|(to, _data)| to == &dst)?;
-
-        let taken = self.to_send.swap_remove(position);
-        Some(taken.1)
-    }
-
-    pub(crate) fn take_notification(
-        &mut self,
-        wanted: Notification<ID>,
-    ) -> Option<Notification<ID>> {
-        let position = self
-            .notifications
-            .iter()
-            .position(|notification| notification == &wanted)?;
-
-        let taken = self.notifications.swap_remove(position);
-        Some(taken)
-    }
-
-    pub(crate) fn take_scheduling(&mut self, timer: Timer<ID>) -> Option<Duration> {
-        let position = self
-            .to_schedule
-            .iter()
-            .position(|(event, _when)| event == &timer)?;
-
-        let taken = self.to_schedule.swap_remove(position);
-        Some(taken.1)
-    }
-
-    pub(crate) fn find_scheduling<F>(&self, predicate: F) -> Option<&Timer<ID>>
-    where
-        F: Fn(&Timer<ID>) -> bool,
-    {
-        self.to_schedule
-            .iter()
-            .find(|(timer, _)| predicate(timer))
-            .map(|(timer, _)| timer)
-    }
-}
-
-impl Runtime<ID> for InMemoryRuntime {
-    fn notify(&mut self, notification: Notification<ID>) {
-        self.notifications.push(notification);
-    }
-
-    fn send_to(&mut self, to: ID, data: &[u8]) {
-        self.to_send.push((to, Bytes::copy_from_slice(data)));
-    }
-
-    fn submit_after(&mut self, event: Timer<ID>, after: Duration) {
-        self.to_schedule.push((event, after));
     }
 }
 

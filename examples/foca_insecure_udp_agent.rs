@@ -2,7 +2,7 @@
  * https://creativecommons.org/publicdomain/zero/1.0/ */
 use std::{
     cmp::Reverse, collections::BinaryHeap, fs::File, io::Write, net::SocketAddr, path::Path,
-    str::FromStr, sync::Arc, time::Duration,
+    str::FromStr, sync::Arc,
 };
 
 use tracing_subscriber::{
@@ -20,7 +20,7 @@ use tokio::{
     time::{sleep_until, Instant},
 };
 
-use foca::{Config, Foca, Identity, Notification, PostcardCodec, Runtime, Timer};
+use foca::{AccumulatingRuntime, Config, Foca, Identity, Notification, PostcardCodec, Timer};
 
 #[derive(Debug)]
 struct CliParams {
@@ -155,51 +155,6 @@ impl Identity for ID {
     }
 }
 
-struct AccumulatingRuntime<T> {
-    pub to_send: Vec<(T, Bytes)>,
-    pub to_schedule: Vec<(Duration, Timer<T>)>,
-    pub notifications: Vec<Notification<T>>,
-    buf: BytesMut,
-}
-
-impl<T: Identity> Runtime<T> for AccumulatingRuntime<T> {
-    // Notice that we'll interact to these via pop(), so we're taking
-    // them in reverse order of when it happened.
-    // That's perfectly fine, the order of items from a single interaction
-    // is irrelevant. A "nicer" implementation could use VecDeque or
-    // react directly here instead of accumulating.
-
-    fn notify(&mut self, notification: Notification<T>) {
-        self.notifications.push(notification);
-    }
-
-    fn send_to(&mut self, to: T, data: &[u8]) {
-        let mut packet = self.buf.split();
-        packet.put_slice(data);
-        self.to_send.push((to, packet.freeze()));
-    }
-
-    fn submit_after(&mut self, event: Timer<T>, after: Duration) {
-        // We could spawn+sleep here
-        self.to_schedule.push((after, event));
-    }
-}
-
-impl<T> AccumulatingRuntime<T> {
-    pub fn new() -> Self {
-        Self {
-            to_send: Vec::new(),
-            to_schedule: Vec::new(),
-            notifications: Vec::new(),
-            buf: BytesMut::new(),
-        }
-    }
-
-    pub fn backlog(&self) -> usize {
-        self.to_send.len() + self.to_schedule.len() + self.notifications.len()
-    }
-}
-
 fn do_the_file_replace_dance<'a>(
     fname: &str,
     addrs: impl Iterator<Item = &'a SocketAddr>,
@@ -314,14 +269,14 @@ async fn main() -> Result<(), anyhow::Error> {
             // and then drain the runtime.
 
             // First we submit everything that needs to go to the network
-            while let Some((dst, data)) = runtime.to_send.pop() {
+            while let Some((dst, data)) = runtime.to_send() {
                 // ToSocketAddrs would be the fancy thing to use here
                 let _ignored_send_result = tx_send_data.send((dst.addr, data)).await;
             }
 
             // Then schedule what needs to be scheduled
             let now = Instant::now();
-            while let Some((delay, event)) = runtime.to_schedule.pop() {
+            while let Some((delay, event)) = runtime.to_schedule() {
                 scheduler
                     .send((now + delay, event))
                     .expect("error handling");
@@ -344,7 +299,7 @@ async fn main() -> Result<(), anyhow::Error> {
             // so other proccesses periodically open()/read()/close()
             // to figure out the cluster members.
             let mut active_list_has_changed = false;
-            while let Some(notification) = runtime.notifications.pop() {
+            while let Some(notification) = runtime.to_notify() {
                 match notification {
                     Notification::MemberUp(_) | Notification::MemberDown(_) => {
                         active_list_has_changed = true

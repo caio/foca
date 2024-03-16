@@ -1,7 +1,10 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+use alloc::collections::VecDeque;
 use core::{cmp::Ordering, time::Duration};
+
+use bytes::{Bytes, BytesMut};
 
 use crate::{Identity, Incarnation};
 
@@ -193,6 +196,121 @@ impl<T: Eq> core::cmp::Ord for Timer<T> {
 ///
 /// Similar in spirit to [`crate::ProbeNumber`].
 pub type TimerToken = u8;
+
+/// FIXME docs
+pub struct AccumulatingRuntime<T> {
+    to_send: VecDeque<(T, Bytes)>,
+    to_schedule: VecDeque<(Duration, Timer<T>)>,
+    notifications: VecDeque<Notification<T>>,
+    buf: BytesMut,
+}
+
+impl<T: Identity> Runtime<T> for AccumulatingRuntime<T> {
+    // Notice that we'll interact to these via pop(), so we're taking
+    // them in reverse order of when it happened.
+    // That's perfectly fine, the order of items from a single interaction
+    // is irrelevant. A "nicer" implementation could use VecDeque or
+    // react directly here instead of accumulating.
+
+    fn notify(&mut self, notification: Notification<T>) {
+        self.notifications.push_back(notification);
+    }
+
+    fn send_to(&mut self, to: T, data: &[u8]) {
+        self.buf.extend_from_slice(data);
+        let packet = self.buf.split().freeze();
+        self.to_send.push_back((to, packet));
+    }
+
+    fn submit_after(&mut self, event: Timer<T>, after: Duration) {
+        // We could spawn+sleep here
+        self.to_schedule.push_back((after, event));
+    }
+}
+
+impl<T> AccumulatingRuntime<T> {
+    /// FIXME docs
+    #[allow(clippy::new_without_default)] // wtf @ this lint
+    pub fn new() -> Self {
+        Self {
+            to_send: Default::default(),
+            to_schedule: Default::default(),
+            notifications: Default::default(),
+            buf: Default::default(),
+        }
+    }
+
+    /// FIXME docs
+    pub fn to_send(&mut self) -> Option<(T, Bytes)> {
+        self.to_send.pop_front()
+    }
+
+    /// FIXME docs
+    pub fn to_schedule(&mut self) -> Option<(Duration, Timer<T>)> {
+        self.to_schedule.pop_front()
+    }
+
+    /// FIXME docs
+    pub fn to_notify(&mut self) -> Option<Notification<T>> {
+        self.notifications.pop_front()
+    }
+
+    /// FIXME docs
+    pub fn backlog(&self) -> usize {
+        self.to_send.len() + self.to_schedule.len() + self.notifications.len()
+    }
+}
+
+#[cfg(test)]
+impl<T: PartialEq> AccumulatingRuntime<T> {
+    pub(crate) fn clear(&mut self) {
+        self.notifications.clear();
+        self.to_send.clear();
+        self.to_schedule.clear();
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.notifications.is_empty() && self.to_send.is_empty() && self.to_schedule.is_empty()
+    }
+
+    pub(crate) fn take_all_data(&mut self) -> VecDeque<(T, Bytes)> {
+        core::mem::take(&mut self.to_send)
+    }
+
+    pub(crate) fn take_data(&mut self, dst: T) -> Option<Bytes> {
+        let position = self.to_send.iter().position(|(to, _data)| to == &dst)?;
+
+        self.to_send.remove(position).map(|(_, data)| data)
+    }
+
+    pub(crate) fn take_notification(&mut self, wanted: Notification<T>) -> Option<Notification<T>> {
+        let position = self
+            .notifications
+            .iter()
+            .position(|notification| notification == &wanted)?;
+
+        self.notifications.remove(position)
+    }
+
+    pub(crate) fn take_scheduling(&mut self, timer: Timer<T>) -> Option<Duration> {
+        let position = self
+            .to_schedule
+            .iter()
+            .position(|(_when, event)| event == &timer)?;
+
+        self.to_schedule.remove(position).map(|(when, _)| when)
+    }
+
+    pub(crate) fn find_scheduling<F>(&self, predicate: F) -> Option<&Timer<T>>
+    where
+        F: Fn(&Timer<T>) -> bool,
+    {
+        self.to_schedule
+            .iter()
+            .find(|(_, timer)| predicate(timer))
+            .map(|(_, timer)| timer)
+    }
+}
 
 #[cfg(test)]
 mod tests {

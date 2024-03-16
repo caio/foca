@@ -7,7 +7,7 @@ use std::{
 };
 
 use bincode::Options;
-use bytes::{Buf, BufMut, Bytes, BytesMut};
+use bytes::Buf;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
