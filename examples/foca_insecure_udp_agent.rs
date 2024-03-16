@@ -428,7 +428,7 @@ async fn launch_scheduler(
                 };
             }
 
-            // XXX Maybe watch for lange `now - _ins` deltas
+            // XXX Maybe watch for large `now - _ins` deltas to detect runtime lag
             while let Some((_ins, event)) = queue.pop_next(&now) {
                 submit_event!(event);
             }
