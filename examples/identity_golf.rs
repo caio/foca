@@ -56,7 +56,12 @@ fn main() {
             self.addr
         }
 
-        // FIXME explain
+        // When an identity is renew()ed, the cluster will start
+        // seeing two distinct FatIdentity with the exact same
+        // Addr.
+        // This teaches foca to choose the right one to keep
+        // In this case, the right one is simply the one with
+        // the higher `extra` field
         fn win_addr_conflict(&self, adversary: &Self) -> bool {
             self.extra > adversary.extra
         }

@@ -27,7 +27,13 @@ use core::fmt;
 /// See `examples/identity_golf.rs` for ideas
 ///
 pub trait Identity: Clone + Eq + fmt::Debug {
-    /// FIXME docs
+    /// The type of the unique (cluster-wide) address of this identity
+    ///
+    /// A plain identity that cannot auto-rejoin (see `Identity::renew`)
+    /// could have `Addr` the same as `Self` (`std::net::SocketAddr` is
+    /// an example of one)
+    ///
+    /// It's a good idea to have this type as lean as possible
     type Addr: PartialEq;
 
     /// Opt-in on auto-rejoining by providing a new identity.
@@ -37,14 +43,25 @@ pub trait Identity: Clone + Eq + fmt::Debug {
     /// identity and if it yields a new one will immediately
     /// switch to it and notify the cluster so that downtime is
     /// minimized.
+    ///
+    /// **NOTE** The new identity must win the conflict
     fn renew(&self) -> Option<Self>;
 
-    /// FIXME missing docs
+    /// Return this identity's unique address
+    ///
+    /// Typically a socket address, a hostname or similar
+    ///
+    /// On previous versions of this crate, there was a `has_same_prefix()`
+    /// method. This serves the same purpose. Having a concrete type
+    /// instead of just a yes/no allows Foca to fully manage the
+    /// cluster members and keep its memory bound by the number of nodes
+    /// instead of the number of identities
     fn addr(&self) -> Self::Addr;
 
-    /// FIXME docs
-    // decide which identity to keep in case of conflicts
-    // ffs this name
+    /// Decides which to keep when Foca encounters multiple identities
+    /// sharing the same address
+    ///
+    /// Returning `true` means that self will be kept
     fn win_addr_conflict(&self, _adversary: &Self) -> bool;
 }
 

@@ -156,7 +156,9 @@ impl foca::Identity for ID {
         self.addr
     }
 
-    // FIXME explain
+    // This teaches every member how to compare two identities
+    // with the same Addr value
+    // In our case, the one with the larger bump always wins
     fn win_addr_conflict(&self, adversary: &Self) -> bool {
         self.bump > adversary.bump
     }

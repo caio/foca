@@ -1581,6 +1581,14 @@ where
                 #[cfg(feature = "tracing")]
                 tracing::debug!("Rejoin failure: Identity::renew() returned same id",);
                 Ok(false)
+            } else if !new_identity.win_addr_conflict(&self.identity) {
+                #[cfg(feature = "tracing")]
+                tracing::warn!(
+                    new = tracing::field::debug(&new_identity),
+                    old = tracing::field::debug(&self.identity),
+                    "Rejoin failure: New identity doesn't win the conflict with the old one",
+                );
+                Ok(false)
             } else {
                 self.change_identity(new_identity.clone(), &mut runtime)?;
 
@@ -1706,12 +1714,14 @@ mod tests {
 
         codec
             .encode_header(&header, &mut buf)
-            .expect("MAYBE FIXME?");
+            .expect("BadCodec shouldn't fail");
 
         if !updates.is_empty() {
             buf.put_u16(u16::try_from(updates.len()).unwrap());
             for member in updates.iter() {
-                codec.encode_member(member, &mut buf).expect("MAYBE FIXME?");
+                codec
+                    .encode_member(member, &mut buf)
+                    .expect("BadCodec shouldn't fail");
             }
         }
 
