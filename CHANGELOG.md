@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.17.0 - 2024-??-??
+
+- **BREAKING**: `foca::Identity` has been revamped and now requires
+  a unique cluster-wide identifier (typically a socket addrees or a
+  hostname). When multiple identities appear with the same `Addr`
+  the conflict is handled by `Identity::win_addr_conflict`
+- **BREAKING**: The _custom_ broadcast wire format has changed and
+  `BroadcastHandler::receive_item` is called with the exact packet
+  size
+- There's no need to manage the list of members externally anymore:
+  foca does it all for you and `Foca::iter_members` only lists
+  the unique, freshest identities
+- `examples/foca_insecure_udp_agent.rs` now comes with a fully working
+  custom broadcast example
+- There's now a simple `runtime::AccumulatingRuntime` that's good
+  enough for basic usage if you don't want to implement your own
+
 ## v0.16.0 - 2023-10-01
 
 - Introduce `Foca::iter_membership_state` that provides a view into the
