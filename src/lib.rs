@@ -565,7 +565,7 @@ where
     /// Register some data to be broadcast along with Foca messages.
     ///
     /// Calls into this instance's `BroadcastHandler` and reacts accordingly.
-    pub fn add_broadcast(&mut self, data: &[u8]) -> Result<()> {
+    pub fn add_broadcast(&mut self, data: &[u8]) -> Result<bool> {
         if data.is_empty() {
             return Err(Error::MalformedPacket);
         }
@@ -586,9 +586,9 @@ where
                 data.to_vec(),
                 self.config.max_transmissions.get().into(),
             );
-            Ok(())
+            Ok(true)
         } else {
-            Err(Error::MalformedPacket)
+            Ok(false)
         }
     }
 
@@ -3440,7 +3440,7 @@ mod tests {
         );
 
         assert_eq!(
-            Ok(()),
+            Ok(true),
             foca.add_broadcast(VersionedKey::new(420, 0).as_ref()),
         );
 
@@ -3451,20 +3451,28 @@ mod tests {
         );
 
         assert_eq!(
-            Ok(()),
+            Ok(true),
             foca.add_broadcast(VersionedKey::new(420, 1).as_ref()),
         );
 
         assert_eq!(
             1,
             foca.custom_broadcast_backlog(),
-            "But receiving a new version should simply replace the existing one"
+            "Receiving a new version should simply replace the existing one"
         );
+
+        assert_eq!(
+            Ok(false),
+            foca.add_broadcast(VersionedKey::new(420, 1).as_ref()),
+            "Adding stale/known broadcast should signal that nothing was added"
+        );
+
+        assert_eq!(1, foca.custom_broadcast_backlog(),);
 
         // Let's add one more custom broadcast because testing with N=1
         // is pretty lousy :-)
         assert_eq!(
-            Ok(()),
+            Ok(true),
             foca.add_broadcast(VersionedKey::new(710, 1).as_ref()),
         );
 
