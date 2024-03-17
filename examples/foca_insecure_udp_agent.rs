@@ -1,17 +1,24 @@
 /* Any copyright is dedicated to the Public Domain.
  * https://creativecommons.org/publicdomain/zero/1.0/ */
 use std::{
-    cmp::Reverse, collections::BinaryHeap, fs::File, io::Write, net::SocketAddr, path::Path,
-    str::FromStr, sync::Arc,
+    cmp::Reverse,
+    collections::{BinaryHeap, HashMap},
+    fs::File,
+    io::Write,
+    net::SocketAddr,
+    path::Path,
+    str::FromStr,
+    sync::Arc,
 };
 
+use bincode::Options;
 use tracing_subscriber::{
     filter::{EnvFilter, LevelFilter},
     fmt,
     prelude::*,
 };
 
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::{Buf, BufMut, Bytes, BytesMut};
 use clap::{App, Arg};
 use rand::{rngs::StdRng, SeedableRng};
 use tokio::{
@@ -20,7 +27,7 @@ use tokio::{
     time::{sleep_until, Instant},
 };
 
-use foca::{AccumulatingRuntime, Config, Foca, Identity, Notification, PostcardCodec, Timer};
+use foca::{BincodeCodec, Config, Foca, Notification, Timer};
 
 #[derive(Debug)]
 struct CliParams {
@@ -108,7 +115,7 @@ impl CliParams {
 struct ID {
     addr: SocketAddr,
     // An extra field to allow fast rejoin
-    bump: u16,
+    bump: u64,
 }
 
 // We implement a custom, simpler Debug format just to make the tracing
@@ -127,12 +134,12 @@ impl ID {
     fn new(addr: SocketAddr) -> Self {
         Self {
             addr,
-            bump: rand::random(),
+            bump: secs_since_epoch(),
         }
     }
 }
 
-impl Identity for ID {
+impl foca::Identity for ID {
     type Addr = SocketAddr;
 
     // And by implementing `renew` we enable automatic rejoining:
@@ -216,7 +223,13 @@ async fn main() -> Result<(), anyhow::Error> {
     let buf_len = config.max_packet_size.get();
     let mut recv_buf = vec![0u8; buf_len];
 
-    let mut foca = Foca::new(identity, config, rng, PostcardCodec);
+    let mut foca = Foca::with_custom_broadcast(
+        identity,
+        config,
+        rng,
+        BincodeCodec(bincode::DefaultOptions::new()),
+        Handler::new(),
+    );
     let socket = Arc::new(UdpSocket::bind(bind_addr).await?);
 
     // We'll create a task responsible to sending data through the
@@ -244,8 +257,23 @@ async fn main() -> Result<(), anyhow::Error> {
     // until the necessary time to submit the events it receives
     let scheduler = launch_scheduler(tx_foca.clone()).await;
 
-    let mut runtime = AccumulatingRuntime::new();
+    // Periodically instruct foca to send a custom broadcast
+    let broadcast_tx_foca = tx_foca.clone();
     tokio::spawn(async move {
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(5));
+        loop {
+            interval.tick().await;
+            if broadcast_tx_foca.send(Input::SendBroadcast).await.is_err() {
+                break;
+            }
+        }
+    });
+
+    let mut runtime = foca::AccumulatingRuntime::new();
+    tokio::spawn(async move {
+        let mut ser_buf = Vec::new();
+        let mut last_change_at = 0;
+
         while let Some(input) = rx_foca.recv().await {
             debug_assert_eq!(0, runtime.backlog());
 
@@ -253,6 +281,31 @@ async fn main() -> Result<(), anyhow::Error> {
                 Input::Event(timer) => foca.handle_timer(timer, &mut runtime),
                 Input::Data(data) => foca.handle_data(&data, &mut runtime),
                 Input::Announce(dst) => foca.announce(dst, &mut runtime),
+                Input::SendBroadcast => {
+                    let msg = format!(
+                        "Hello from {:?}! I have {} peers",
+                        foca.identity(),
+                        foca.num_members()
+                    );
+
+                    let key = BroadcastKey {
+                        addr: foca.identity().addr,
+                        version: last_change_at,
+                    };
+                    ser_buf.clear();
+                    bincode::DefaultOptions::new()
+                        .serialize_into(&mut ser_buf, &Broadcast { key, msg })
+                        .expect("ser error handling");
+
+                    // Notice that we're unconditionally adding a custom
+                    // broadcast to the backlog, so there will always be some
+                    // data being passed around (i.e. it's akin to a heartbeat)
+                    // A complex system would have multiple kinds of broadcasts
+                    // some heartbeat-like (service advertisement, node status)
+                    // and some more message-like (leadership election, anti-
+                    // entropy)
+                    foca.add_broadcast(&ser_buf).map(|_| ())
+                }
             };
 
             // Every public foca result yields `()` on success, so there's
@@ -302,10 +355,14 @@ async fn main() -> Result<(), anyhow::Error> {
             while let Some(notification) = runtime.to_notify() {
                 match notification {
                     Notification::MemberUp(_) | Notification::MemberDown(_) => {
-                        active_list_has_changed = true
+                        active_list_has_changed = true;
+                        last_change_at = secs_since_epoch();
                     }
                     Notification::Idle => {
                         tracing::info!("cluster empty");
+                    }
+                    Notification::Renamed(old, new) => {
+                        tracing::info!("member {old:?} is now known as {new:?}");
                     }
 
                     other => {
@@ -342,6 +399,7 @@ enum Input<T> {
     Data(Bytes),
     Announce(T),
     Event(Timer<T>),
+    SendBroadcast,
 }
 
 async fn launch_scheduler(
@@ -450,6 +508,97 @@ impl TimerQueue {
             self.0.pop().map(|Reverse(inner)| inner)
         } else {
             None
+        }
+    }
+}
+
+fn secs_since_epoch() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+}
+
+#[derive(serde::Deserialize, serde::Serialize)]
+struct BroadcastKey {
+    addr: SocketAddr,
+    version: u64,
+}
+
+#[derive(serde::Deserialize, serde::Serialize)]
+struct Broadcast {
+    key: BroadcastKey,
+    msg: String,
+}
+
+impl foca::Invalidates for BroadcastKey {
+    fn invalidates(&self, other: &Self) -> bool {
+        self.addr == other.addr && self.version > other.version
+    }
+}
+
+struct Handler {
+    messages: HashMap<SocketAddr, (u64, String)>,
+    opts: bincode::DefaultOptions,
+}
+
+impl Handler {
+    fn new() -> Self {
+        Self {
+            messages: Default::default(),
+            opts: bincode::DefaultOptions::new(),
+        }
+    }
+}
+
+impl foca::BroadcastHandler<ID> for Handler {
+    type Key = BroadcastKey;
+
+    type Error = String;
+
+    fn receive_item(
+        &mut self,
+        data: &[u8],
+        _sender: Option<&ID>,
+    ) -> Result<Option<Self::Key>, Self::Error> {
+        let mut reader = data.reader();
+
+        // In this contrived example, we decode the whole broadcast
+        // directly. Ideally, one would first decode just the key
+        // so that you can quickly verify if there's a need to
+        // decode the rest of the payload.
+        let Broadcast { key, msg }: Broadcast = self
+            .opts
+            .deserialize_from(&mut reader)
+            .map_err(|err| format!("bad broadcast: {err}"))?;
+
+        let is_new_message = self
+            .messages
+            .get(&key.addr)
+            // If we already have info about the node, check if the version
+            // is newer
+            .map(|(cur_version, _)| cur_version < &key.version)
+            .unwrap_or(true);
+
+        if is_new_message {
+            tracing::info!(
+                payload = tracing::field::debug(&msg),
+                "new custom broadcast",
+            );
+
+            if let Some(previous) = self.messages.insert(key.addr, (key.version, msg)) {
+                tracing::debug!(previous = tracing::field::debug(&previous), "old node data");
+            }
+
+            Ok(Some(key))
+        } else {
+            tracing::trace!(
+                node = tracing::field::debug(key.addr),
+                version = tracing::field::debug(key.version),
+                payload = tracing::field::debug(&msg),
+                "discarded previously seen message"
+            );
+            Ok(None)
         }
     }
 }

@@ -41,11 +41,7 @@ required-features = ["std"]
 
 [[example]]
 name = "foca_insecure_udp_agent"
-required-features = ["std", "tracing", "postcard-codec"]
-
-[[example]]
-name = "broadcasting"
-required-features = ["bincode-codec"]
+required-features = ["std", "tracing", "bincode-codec"]
 
 [dev-dependencies]
 clap = { version = "2", default-features = false }
