@@ -7,8 +7,8 @@ license = "MPL-2.0"
 description = "Gossip-based cluster membership discovery, based on SWIM"
 keywords = ["swim", "gossip", "service-discovery", "memberlist"]
 categories = ["network-programming", "no-std"]
-repository = "https://github.com/caio/foca"
-homepage = "https://github.com/caio/foca"
+repository = "https://caio.co/de/foca/"
+homepage = "https://caio.co/de/foca/"
 documentation = "https://docs.rs/foca"
 
 [package.metadata.docs.rs]
