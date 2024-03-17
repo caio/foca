@@ -11,22 +11,19 @@ use bytes::BufMut;
 /// of the cluster (when it's new information) or to discard it (when
 /// its outdated/stale).
 pub trait BroadcastHandler<T> {
-    /// Concrete type that will be disseminated to all cluster members.
+    /// A unique identifier for the broadcasts this handler manages
     ///
     /// It should be able to compare itself against an arbitrary number
-    /// of other [`Self::Broadcast`] instances and decide wether it
+    /// of other [`Self::Key`] instances and decide wether it
     /// replaces it or not so conflicting/stale information isn't
     /// disseminated.
-    ///
-    /// The `AsRef<[u8]>` part is what gets sent over the wire, which
-    /// [`Self::receive_item`] is supposed to decode.
     type Key: Invalidates;
 
     /// The error type that `receive_item` may emit. Will be wrapped
-    /// by [`crate::Error`].
+    /// by [`crate::Error::CustomBroadcast`].
     type Error: fmt::Debug + fmt::Display + Send + Sync + 'static;
 
-    /// Decodes a [`Self::Broadcast`] from a buffer and either discards
+    /// Decodes a [`Self::Key`] from a buffer and either discards
     /// it or tells Foca to persist and disseminate it.
     ///
     /// `Sender` is `None` when you're adding broadcast data directly,
@@ -47,10 +44,9 @@ pub trait BroadcastHandler<T> {
     /// contains the Key-Value pair; If it didn't, you yield
     /// `Some`, otherwise the operation is stale, so you yield `None`.
     ///
-    /// Implementations MUST read a single [`Self::Broadcast`] from the
-    /// buffer and advance the cursor accordingly.
-    ///
-    /// Implementations may assume the data in the buffer is contiguous.
+    /// The `data` parameter is the exact data provided to
+    /// `crate::Foca::add_broadcast`. When Foca receives N custom
+    /// broadcasts at once, this gets called N times.
     fn receive_item(
         &mut self,
         data: &[u8],

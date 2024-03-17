@@ -6,12 +6,16 @@
   a unique cluster-wide identifier (typically a socket addrees or a
   hostname). When multiple identities appear with the same `Addr`
   the conflict is handled by `Identity::win_addr_conflict`
-- **BREAKING**: The _custom_ broadcast wire format has changed and
-  `BroadcastHandler::receive_item` is called with the exact packet
-  size
+- **BREAKING**: _Custom_ broadcasts wire format has changed and
+  handler implementations now only need to emit an identifier (Key)
+  for each value being broadcast instead of managing the allocation
+  See the `BroadcastHandler` documentation and examples for details
+- There's now `Notification::Rename` that signals whenever an
+  identity with a conflicting `Addr` in the cluster gets replaced
+  by a newer one
 - There's no need to manage the list of members externally anymore:
   foca does it all for you and `Foca::iter_members` only lists
-  the unique, freshest identities
+  the unique (by `Identity::Addr`), freshest identities
 - `examples/foca_insecure_udp_agent.rs` now comes with a fully working
   custom broadcast example
 - There's now a simple `runtime::AccumulatingRuntime` that's good
