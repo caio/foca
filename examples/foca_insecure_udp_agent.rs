@@ -361,7 +361,7 @@ async fn main() -> Result<(), anyhow::Error> {
                     Notification::Idle => {
                         tracing::info!("cluster empty");
                     }
-                    Notification::Renamed(old, new) => {
+                    Notification::Rename(old, new) => {
                         tracing::info!("member {old:?} is now known as {new:?}");
                     }
 

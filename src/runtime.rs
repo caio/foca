@@ -77,8 +77,29 @@ pub enum Notification<T> {
     /// Can only happen if `MemberUp(T)` happened before.
     MemberDown(T),
 
-    /// FIXME docs. better name?
-    Renamed(T, T),
+    /// Foca has learned that there's a more recent identity with
+    /// the same address and chose to use it instead of the previous
+    /// one.
+    ///
+    /// So `Notification::Rename(A,B)` means that we knew about a member
+    /// `A` but now there's a `B` with the same `Identity::Addr` and
+    /// foca chose to keep it. i.e. `B.win_addr_conflict(A) == true`.
+    ///
+    /// This happens naturally when a member rejoins the cluster after
+    /// any event (maybe they were declared down and `Identity::renew`d
+    /// themselves, maybe it's a restart/upgrade process)
+    ///
+    /// Example:
+    ///
+    /// If `A` was considered Down and `B` is Alive, you'll get
+    /// two notifications, in order:
+    //
+    ///  1. `Notification::Rename(A,B)`
+    ///  2. `Notification::MemberUp(B)`
+    ///
+    /// However, if there's no liveness change (both are active
+    /// or both are down), you'll only get the `Rename` notification
+    Rename(T, T),
 
     /// Foca's current identity is known by at least one active member
     /// of the cluster.

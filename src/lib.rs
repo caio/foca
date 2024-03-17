@@ -1229,7 +1229,7 @@ where
                 member_id = tracing::field::debug(&id),
                 "Renamed"
             );
-            runtime.notify(Notification::Renamed(old, id.clone()));
+            runtime.notify(Notification::Rename(old, id.clone()));
         }
 
         if summary.changed_active_set {
@@ -4100,7 +4100,7 @@ mod tests {
         assert_eq!(Ok(()), foca.apply(Member::alive(renewed), &mut runtime));
         assert_eq!(1, foca.num_members());
         // Should notify the runtime about the change
-        expect_notification!(runtime, Notification::Renamed(member, renewed));
+        expect_notification!(runtime, Notification::Rename(member, renewed));
         // But no MemberUp notification should be fired, since
         // previous addr was already active
         reject_notification!(runtime, Notification::MemberUp(member));
@@ -4113,7 +4113,7 @@ mod tests {
         assert_eq!(Ok(()), foca.apply(Member::down(inactive), &mut runtime));
         assert_eq!(0, foca.num_members());
         // We get notified of the rename
-        expect_notification!(runtime, Notification::Renamed(renewed, inactive));
+        expect_notification!(runtime, Notification::Rename(renewed, inactive));
         // AND about the member going down with its new identity
         expect_notification!(runtime, Notification::MemberDown(inactive));
         // but nothing about the (now overriden, forgotten) previous one
@@ -4127,7 +4127,7 @@ mod tests {
         assert_eq!(Ok(()), foca.apply(Member::suspect(active), &mut runtime));
         assert_eq!(1, foca.num_members());
         // Should notify about the rename
-        expect_notification!(runtime, Notification::Renamed(inactive, active));
+        expect_notification!(runtime, Notification::Rename(inactive, active));
         // And about the member being active
         expect_notification!(runtime, Notification::MemberUp(active));
 
