@@ -220,13 +220,13 @@ pub type TimerToken = u8;
 
 /// A `Runtime` implementation that's good enough for simple use-cases.
 ///
-/// It accumulates all events that happen during an iteraction with
+/// It accumulates all events that happen during an interaction with
 /// `crate::Foca` and users must drain those and react accordingly.
 ///
 /// Better runtimes would react directly to the events, intead of
 /// needlessly storing the events in a queue.
 ///
-/// Users must drain the runtime immediatelly after interacting with
+/// Users must drain the runtime immediately after interacting with
 /// foca. Example:
 ///
 /// See it in use at `examples/foca_insecure_udp_agent.rs`

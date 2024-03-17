@@ -363,7 +363,7 @@ where
     /// that have been declared down.
     ///
     /// This is for advanced usage, to be used in tandem with
-    /// [`Foca::apply_many`]. The main usecase for this is
+    /// [`Foca::apply_many`]. The main use-case for this is
     /// state replication:
     ///
     /// 1. You may want to send it to another node so that it knows
@@ -401,7 +401,7 @@ where
                 // where we check equality)
                 //
                 // This can happen naturally: an instance rejoins the cluster
-                // while the cluster activelly talking about its previous identity
+                // while the cluster actively talking about its previous identity
                 // going down.
                 //
                 // Any non-Down state, however, is questionable: maybe there are
@@ -414,7 +414,7 @@ where
                 //
                 // NOTE If there are multiple nodes claiming to have the same
                 //      identity, this will lead to a looping scenario where
-                //      node A delcares B down, then B changes identity and
+                //      node A declares B down, then B changes identity and
                 //      declares A down; nonstop
                 #[cfg(feature = "tracing")]
                 if update.is_active() {
@@ -777,7 +777,7 @@ where
         self.updates.len()
     }
 
-    /// Repports the current length of the custom broadcast queue.
+    /// Reports the current length of the custom broadcast queue.
     ///
     /// Custom broadcasts are transmitted [`Config::max_transmissions`]
     /// times at most or until they get invalidated by another custom
@@ -796,7 +796,7 @@ where
     /// Presently, attempting to change [`Config::probe_period`] or
     /// [`Config::probe_rtt`] results in [`Error::InvalidConfig`]; For
     /// such cases it's recommended to recreate your Foca instance. When
-    /// an error occurrs, every configuration parameter remains
+    /// an error occurs, every configuration parameter remains
     /// unchanged.
     pub fn set_config(&mut self, config: Config) -> Result<()> {
         if self.config.probe_period != config.probe_period
@@ -915,7 +915,7 @@ where
             // untrustworthy from their perspective
             // So we handle TurnUndead here, otherwise the nodes will be
             // spamming each other with this message until enough time passes
-            // that foca forgets the down memer (`Config::remove_down_after`)
+            // that foca forgets the down member (`Config::remove_down_after`)
             if message == Message::TurnUndead {
                 self.handle_self_update(Incarnation::default(), State::Down, &mut runtime)?;
             }
@@ -964,7 +964,7 @@ where
                     tracing::debug!(probed_id = tracing::field::debug(&src), "Probe success");
                 } else {
                     // May be triggered by a member that slows down (say, you ^Z
-                    // the proccess and `fg` back after a while).
+                    // the process and `fg` back after a while).
                     // Might be interesting to keep an eye on.
                     #[cfg(feature = "tracing")]
                     tracing::trace!(
@@ -1481,7 +1481,7 @@ where
     }
 
     fn accept_payload(&self, header: &Header<T>) -> bool {
-        // Only accept payloads addessed to us
+        // Only accept payloads addressed to us
         header.dst == self.identity
             // Unless it's an Announce message
             || (header.message == Message::Announce
