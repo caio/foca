@@ -1,6 +1,7 @@
 [package]
 name = "foca"
 version = "0.16.0"
+rust-version = "1.70.0"
 authors = ["Caio <contact@caio.co>"]
 edition = "2021"
 license = "MPL-2.0"
