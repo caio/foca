@@ -218,7 +218,18 @@ impl<T: Eq> core::cmp::Ord for Timer<T> {
 /// Similar in spirit to [`crate::ProbeNumber`].
 pub type TimerToken = u8;
 
-/// FIXME docs
+/// A `Runtime` implementation that's good enough for simple use-cases.
+///
+/// It accumulates all events that happen during an iteraction with
+/// `crate::Foca` and users must drain those and react accordingly.
+///
+/// Better runtimes would react directly to the events, intead of
+/// needlessly storing the events in a queue.
+///
+/// Users must drain the runtime immediatelly after interacting with
+/// foca. Example:
+///
+/// See it in use at `examples/foca_insecure_udp_agent.rs`
 pub struct AccumulatingRuntime<T> {
     to_send: VecDeque<(T, Bytes)>,
     to_schedule: VecDeque<(Duration, Timer<T>)>,
@@ -226,13 +237,18 @@ pub struct AccumulatingRuntime<T> {
     buf: BytesMut,
 }
 
-impl<T: Identity> Runtime<T> for AccumulatingRuntime<T> {
-    // Notice that we'll interact to these via pop(), so we're taking
-    // them in reverse order of when it happened.
-    // That's perfectly fine, the order of items from a single interaction
-    // is irrelevant. A "nicer" implementation could use VecDeque or
-    // react directly here instead of accumulating.
+impl<T> Default for AccumulatingRuntime<T> {
+    fn default() -> Self {
+        Self {
+            to_send: Default::default(),
+            to_schedule: Default::default(),
+            notifications: Default::default(),
+            buf: Default::default(),
+        }
+    }
+}
 
+impl<T: Identity> Runtime<T> for AccumulatingRuntime<T> {
     fn notify(&mut self, notification: Notification<T>) {
         self.notifications.push_back(notification);
     }
@@ -250,33 +266,41 @@ impl<T: Identity> Runtime<T> for AccumulatingRuntime<T> {
 }
 
 impl<T> AccumulatingRuntime<T> {
-    /// FIXME docs
-    #[allow(clippy::new_without_default)] // wtf @ this lint
+    /// Create a new `AccumulatingRuntime`
     pub fn new() -> Self {
-        Self {
-            to_send: Default::default(),
-            to_schedule: Default::default(),
-            notifications: Default::default(),
-            buf: Default::default(),
-        }
+        Self::default()
     }
 
-    /// FIXME docs
+    /// Yields data to be sent to a cluster member `T` in the
+    /// order they've happened.
+    ///
+    /// Users are expected to drain it until it yields `None`
+    /// after every interaction with `crate::Foca`
     pub fn to_send(&mut self) -> Option<(T, Bytes)> {
         self.to_send.pop_front()
     }
 
-    /// FIXME docs
+    /// Yields timer events and how far in the future they
+    /// must be given back to the foca instance that produced it
+    ///
+    /// Users are expected to drain it until it yields `None`
+    /// after every interaction with `crate::Foca`
     pub fn to_schedule(&mut self) -> Option<(Duration, Timer<T>)> {
         self.to_schedule.pop_front()
     }
 
-    /// FIXME docs
+    /// Yields event notifications in the order they've happened
+    ///
+    /// Users are expected to drain it until it yields `None`
+    /// after every interaction with `crate::Foca`
     pub fn to_notify(&mut self) -> Option<Notification<T>> {
         self.notifications.pop_front()
     }
 
-    /// FIXME docs
+    /// Returns how many unhandled events are left in this runtime
+    ///
+    /// Should be brought down to zero after every interaction with
+    /// `crate::Foca`
     pub fn backlog(&self) -> usize {
         self.to_send.len() + self.to_schedule.len() + self.notifications.len()
     }
