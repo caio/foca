@@ -2,15 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 use alloc::vec::Vec;
-use core::time::Duration;
 
-use bytes::{Buf, BufMut, Bytes};
+use bytes::{Buf, BufMut};
 
-use crate::{Codec, Header, Identity, Member, Message, Notification, Runtime, State, Timer};
+use crate::{Codec, Header, Identity, Member, Message, State};
 
 #[derive(Debug, Clone, Copy, PartialOrd, Ord)]
 pub(crate) struct ID {
-    id: u8,
+    addr: u8,
     bump: u8,
     rejoinable: bool,
 }
@@ -18,7 +17,14 @@ pub(crate) struct ID {
 impl PartialEq for ID {
     fn eq(&self, other: &Self) -> bool {
         // Ignoring `rejoinable` field
-        self.id == other.id && self.bump == other.bump
+        self.addr == other.addr && self.bump == other.bump
+    }
+}
+
+impl core::hash::Hash for ID {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        self.addr.hash(state);
+        self.bump.hash(state);
     }
 }
 
@@ -29,9 +35,14 @@ impl ID {
         ID::new_with_bump(id, 0)
     }
 
+    pub(crate) fn bump(mut self) -> Self {
+        self.bump = self.bump.wrapping_add(1);
+        self
+    }
+
     pub(crate) fn new_with_bump(id: u8, bump: u8) -> Self {
         Self {
-            id,
+            addr: id,
             bump,
             rejoinable: false,
         }
@@ -44,7 +55,7 @@ impl ID {
 
     pub(crate) fn serialize_into(&self, mut buf: impl BufMut) -> Result<(), BadCodecError> {
         if buf.remaining_mut() >= 2 {
-            buf.put_u8(self.id);
+            buf.put_u8(self.addr);
             buf.put_u8(self.bump);
             Ok(())
         } else {
@@ -55,7 +66,7 @@ impl ID {
     pub(crate) fn deserialize_from(mut buf: impl Buf) -> Result<Self, BadCodecError> {
         if buf.remaining() >= 2 {
             Ok(Self {
-                id: buf.get_u8(),
+                addr: buf.get_u8(),
                 bump: buf.get_u8(),
                 // Only the identity held by foca cares about this
                 rejoinable: false,
@@ -67,16 +78,23 @@ impl ID {
 }
 
 impl Identity for ID {
-    fn has_same_prefix(&self, other: &Self) -> bool {
-        self.id == other.id
-    }
+    type Addr = u8;
 
     fn renew(&self) -> Option<Self> {
         if self.rejoinable {
-            Some(ID::new_with_bump(self.id, self.bump.wrapping_add(1)).rejoinable())
+            Some(ID::new_with_bump(self.addr, self.bump.wrapping_add(1)).rejoinable())
         } else {
             None
         }
+    }
+
+    fn addr(&self) -> u8 {
+        self.addr
+    }
+
+    fn win_addr_conflict(&self, adversary: &Self) -> bool {
+        debug_assert_ne!(self, adversary);
+        self.bump > adversary.bump
     }
 }
 
@@ -335,87 +353,6 @@ impl Codec<ID> for BadCodec {
 
     fn decode_member(&mut self, mut buf: impl Buf) -> Result<Member<ID>, Self::Error> {
         BadCodec::decode_member(self, &mut buf)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct InMemoryRuntime {
-    notifications: Vec<Notification<ID>>,
-    to_send: Vec<(ID, Bytes)>,
-    to_schedule: Vec<(Timer<ID>, Duration)>,
-}
-
-impl InMemoryRuntime {
-    pub(crate) fn new() -> Self {
-        Self {
-            notifications: Vec::new(),
-            to_send: Vec::new(),
-            to_schedule: Vec::new(),
-        }
-    }
-
-    pub(crate) fn clear(&mut self) {
-        self.notifications.clear();
-        self.to_send.clear();
-        self.to_schedule.clear();
-    }
-
-    pub(crate) fn take_all_data(&mut self) -> Vec<(ID, Bytes)> {
-        core::mem::take(&mut self.to_send)
-    }
-
-    pub(crate) fn take_data(&mut self, dst: ID) -> Option<Bytes> {
-        let position = self.to_send.iter().position(|(to, _data)| to == &dst)?;
-
-        let taken = self.to_send.swap_remove(position);
-        Some(taken.1)
-    }
-
-    pub(crate) fn take_notification(
-        &mut self,
-        wanted: Notification<ID>,
-    ) -> Option<Notification<ID>> {
-        let position = self
-            .notifications
-            .iter()
-            .position(|notification| notification == &wanted)?;
-
-        let taken = self.notifications.swap_remove(position);
-        Some(taken)
-    }
-
-    pub(crate) fn take_scheduling(&mut self, timer: Timer<ID>) -> Option<Duration> {
-        let position = self
-            .to_schedule
-            .iter()
-            .position(|(event, _when)| event == &timer)?;
-
-        let taken = self.to_schedule.swap_remove(position);
-        Some(taken.1)
-    }
-
-    pub(crate) fn find_scheduling<F>(&self, predicate: F) -> Option<&Timer<ID>>
-    where
-        F: Fn(&Timer<ID>) -> bool,
-    {
-        self.to_schedule
-            .iter()
-            .find(|(timer, _)| predicate(timer))
-            .map(|(timer, _)| timer)
-    }
-}
-
-impl Runtime<ID> for InMemoryRuntime {
-    fn notify(&mut self, notification: Notification<ID>) {
-        self.notifications.push(notification);
-    }
-
-    fn send_to(&mut self, to: ID, data: &[u8]) {
-        self.to_send.push((to, Bytes::copy_from_slice(data)));
-    }
-
-    fn submit_after(&mut self, event: Timer<ID>, after: Duration) {
-        self.to_schedule.push((event, after));
     }
 }
 

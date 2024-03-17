@@ -145,7 +145,10 @@ impl<T> Members<T> {
     }
 }
 
-impl<T: PartialEq + Clone> Members<T> {
+impl<T> Members<T>
+where
+    T: PartialEq + Clone + crate::Identity,
+{
     pub(crate) fn num_active(&self) -> usize {
         self.num_active
     }
@@ -260,23 +263,51 @@ impl<T: PartialEq + Clone> Members<T> {
 
     pub(crate) fn apply_existing_if<F: Fn(&Member<T>) -> bool>(
         &mut self,
-        update: Member<T>,
+        mut update: Member<T>,
         condition: F,
-    ) -> Option<ApplySummary> {
+    ) -> Option<ApplySummary<T>> {
         if let Some(known_member) = self
             .inner
             .iter_mut()
-            .find(|member| &member.id == update.id())
+            .find(|member| member.id.addr() == update.id().addr())
         {
+            // if there's a conflict and the update wins, the member
+            // state is fully replaced
+            let mut force_apply = false;
+            if known_member.id != update.id {
+                // If the update wins the conflict, the full member
+                // state is replaced (it's essentially a rejoin)
+                if known_member.id.win_addr_conflict(&update.id) {
+                    // update lost conflict, it's junk
+                    return Some(ApplySummary {
+                        is_active_now: known_member.is_active(),
+                        apply_successful: false,
+                        changed_active_set: false,
+                        replaced_id: None,
+                    });
+                }
+                force_apply = true;
+            }
+
             if !condition(known_member) {
                 return Some(ApplySummary {
                     is_active_now: known_member.is_active(),
                     apply_successful: false,
                     changed_active_set: false,
+                    replaced_id: None,
                 });
             }
             let was_active = known_member.is_active();
-            let apply_successful = known_member.change_state(update.incarnation(), update.state());
+            let mut replaced_id = None;
+            let apply_successful = if force_apply {
+                core::mem::swap(&mut known_member.id, &mut update.id);
+                replaced_id = Some(update.id);
+                known_member.state = update.state;
+                known_member.incarnation = update.incarnation;
+                true
+            } else {
+                known_member.change_state(update.incarnation, update.state)
+            };
             let is_active_now = known_member.is_active();
             let changed_active_set = is_active_now != was_active;
 
@@ -293,13 +324,14 @@ impl<T: PartialEq + Clone> Members<T> {
                 is_active_now,
                 apply_successful,
                 changed_active_set,
+                replaced_id,
             })
         } else {
             None
         }
     }
 
-    pub(crate) fn apply(&mut self, update: Member<T>, mut rng: impl Rng) -> ApplySummary {
+    pub(crate) fn apply(&mut self, update: Member<T>, mut rng: impl Rng) -> ApplySummary<T> {
         self.apply_existing_if(update.clone(), |_member| true)
             .unwrap_or_else(|| {
                 // Unknown member, we'll register it
@@ -324,6 +356,7 @@ impl<T: PartialEq + Clone> Members<T> {
                     apply_successful: true,
                     // Registering a new active member changes the active set
                     changed_active_set: is_active_now,
+                    replaced_id: None,
                 }
             })
     }
@@ -331,25 +364,46 @@ impl<T: PartialEq + Clone> Members<T> {
 
 #[derive(Debug, Clone, PartialEq)]
 #[must_use]
-pub(crate) struct ApplySummary {
+pub(crate) struct ApplySummary<T> {
     pub(crate) is_active_now: bool,
     pub(crate) apply_successful: bool,
     pub(crate) changed_active_set: bool,
+    pub(crate) replaced_id: Option<T>,
 }
 
 #[cfg(test)]
 mod tests {
+
+    use crate::Identity;
 
     use super::*;
 
     use alloc::vec;
     use rand::{rngs::SmallRng, SeedableRng};
 
+    #[derive(Clone, Debug, PartialEq, Eq, Copy, PartialOrd, Ord)]
+    struct Id(&'static str);
+    impl crate::Identity for Id {
+        type Addr = &'static str;
+
+        fn renew(&self) -> Option<Self> {
+            None
+        }
+
+        fn addr(&self) -> Self::Addr {
+            self.0
+        }
+
+        fn win_addr_conflict(&self, _adversary: &Self) -> bool {
+            panic!("addr is self, there'll never be a conflict");
+        }
+    }
+
     use State::*;
 
     #[test]
     fn alive_transitions() {
-        let mut member = Member::new("a", 0, Alive);
+        let mut member = Member::new(Id("a"), 0, Alive);
 
         // Alive => Alive
         assert!(
@@ -383,7 +437,7 @@ mod tests {
         );
         assert_eq!(Suspect, member.state);
 
-        member = Member::new("b", 0, Alive);
+        member = Member::new(Id("b"), 0, Alive);
         assert!(
             member.change_state(member.incarnation + 1, Suspect),
             "transition to suspect with higher incarnation"
@@ -408,7 +462,7 @@ mod tests {
 
     #[test]
     fn suspect_transitions() {
-        let mut member = Member::new("a", 0, Suspect);
+        let mut member = Member::new(Id("a"), 0, Suspect);
 
         // Suspect => Suspect
         assert!(
@@ -474,7 +528,7 @@ mod tests {
 
     #[test]
     fn next_walks_sequentially_then_shuffles() {
-        let ordered_ids = vec![1, 2, 3, 4, 5];
+        let ordered_ids = vec![Id("1"), Id("2"), Id("3"), Id("4"), Id("5")];
         let mut members = Members::new(ordered_ids.iter().cloned().map(Member::alive).collect());
 
         let mut rng = SmallRng::seed_from_u64(0xF0CA);
@@ -510,22 +564,22 @@ mod tests {
 
         assert_eq!(
             None,
-            members.apply_existing_if(Member::alive(1), |_member| true),
+            members.apply_existing_if(Member::alive(Id("1")), |_member| true),
             "Only yield None only if member is not found"
         );
 
         let mut rng = SmallRng::seed_from_u64(0xF0CA);
-        let _ = members.apply(Member::alive(1), &mut rng);
+        let _ = members.apply(Member::alive(Id("1")), &mut rng);
 
         assert_ne!(
             None,
-            members.apply_existing_if(Member::alive(1), |_member| true),
+            members.apply_existing_if(Member::alive(Id("1")), |_member| true),
             "Must yield Some() if existing, regardless of condition"
         );
 
         assert_ne!(
             None,
-            members.apply_existing_if(Member::alive(1), |_member| false),
+            members.apply_existing_if(Member::alive(Id("1")), |_member| false),
             "Must yield Some() if existing, regardless of condition"
         );
     }
@@ -536,12 +590,13 @@ mod tests {
         let mut rng = SmallRng::seed_from_u64(0xF0CA);
 
         // New and active member
-        let res = members.apply(Member::suspect(1), &mut rng);
+        let res = members.apply(Member::suspect(Id("1")), &mut rng);
         assert_eq!(
             ApplySummary {
                 is_active_now: true,
                 apply_successful: true,
-                changed_active_set: true
+                changed_active_set: true,
+                replaced_id: None,
             },
             res,
         );
@@ -550,12 +605,13 @@ mod tests {
 
         // Failed attempt to change member id=1 to alive
         // (since it's already suspect with same incarnation)
-        let res = members.apply(Member::alive(1), &mut rng);
+        let res = members.apply(Member::alive(Id("1")), &mut rng);
         assert_eq!(
             ApplySummary {
                 is_active_now: true,
                 apply_successful: false,
-                changed_active_set: false
+                changed_active_set: false,
+                replaced_id: None,
             },
             res,
         );
@@ -563,24 +619,26 @@ mod tests {
 
         // Successful attempt at changing member id=1 to
         // alive by using a higher incarnation
-        let res = members.apply(Member::new(1, 1, State::Alive), &mut rng);
+        let res = members.apply(Member::new(Id("1"), 1, State::Alive), &mut rng);
         assert_eq!(
             ApplySummary {
                 is_active_now: true,
                 apply_successful: true,
-                changed_active_set: false
+                changed_active_set: false,
+                replaced_id: None,
             },
             res,
         );
         assert_eq!(1, members.len());
 
         // Change existing member to down
-        let res = members.apply(Member::down(1), &mut rng);
+        let res = members.apply(Member::down(Id("1")), &mut rng);
         assert_eq!(
             ApplySummary {
                 is_active_now: false,
                 apply_successful: true,
-                changed_active_set: true
+                changed_active_set: true,
+                replaced_id: None,
             },
             res,
         );
@@ -588,12 +646,13 @@ mod tests {
         assert_eq!(0, members.num_active());
 
         // New and inactive member
-        let res = members.apply(Member::down(2), &mut rng);
+        let res = members.apply(Member::down(Id("2")), &mut rng);
         assert_eq!(
             ApplySummary {
                 is_active_now: false,
                 apply_successful: true,
-                changed_active_set: false
+                changed_active_set: false,
+                replaced_id: None,
             },
             res,
         );
@@ -608,21 +667,21 @@ mod tests {
 
         assert_eq!(
             None,
-            members.remove_if_down(&1),
+            members.remove_if_down(&Id("1")),
             "cant remove member that does not exist"
         );
-        let _ = members.apply(Member::alive(1), &mut rng);
+        let _ = members.apply(Member::alive(Id("1")), &mut rng);
 
         assert_eq!(
             None,
-            members.remove_if_down(&1),
+            members.remove_if_down(&Id("1")),
             "cant remove member that isnt down"
         );
-        let _ = members.apply(Member::down(1), &mut rng);
+        let _ = members.apply(Member::down(Id("1")), &mut rng);
 
         assert_eq!(
-            Some(Member::down(1)),
-            members.remove_if_down(&1),
+            Some(Member::down(Id("1"))),
+            members.remove_if_down(&Id("1")),
             "must return the removed member"
         );
     }
@@ -638,9 +697,9 @@ mod tests {
             "next() should yield None when there are no members"
         );
 
-        let _ = members.apply(Member::down(-1), &mut rng);
-        let _ = members.apply(Member::down(-2), &mut rng);
-        let _ = members.apply(Member::down(-3), &mut rng);
+        let _ = members.apply(Member::down(Id("-1")), &mut rng);
+        let _ = members.apply(Member::down(Id("-2")), &mut rng);
+        let _ = members.apply(Member::down(Id("-3")), &mut rng);
 
         assert_eq!(
             None,
@@ -648,11 +707,11 @@ mod tests {
             "next() should yield None when there are no active members"
         );
 
-        let _ = members.apply(Member::alive(1), &mut rng);
+        let _ = members.apply(Member::alive(Id("1")), &mut rng);
 
         for _i in 0..10 {
             assert_eq!(
-                Some(1),
+                Some(Id("1")),
                 members.next(&mut rng).map(|m| m.id),
                 "next() should yield the same member if its the only active"
             );
@@ -663,14 +722,14 @@ mod tests {
     fn choose_active_members_behaviour() {
         let members = Members::new(Vec::from([
             // 5 active members
-            Member::alive(1),
-            Member::alive(2),
-            Member::alive(3),
-            Member::suspect(4),
-            Member::suspect(5),
+            Member::alive(Id("1")),
+            Member::alive(Id("2")),
+            Member::alive(Id("3")),
+            Member::suspect(Id("4")),
+            Member::suspect(Id("5")),
             // 2 down
-            Member::down(6),
-            Member::down(7),
+            Member::down(Id("6")),
+            Member::down(Id("7")),
         ]));
 
         assert_eq!(7, members.len());
@@ -700,7 +759,37 @@ mod tests {
         assert_eq!(2, out.len(), "Respects `wanted` even if we have more");
 
         out.clear();
-        members.choose_active_members(usize::MAX, &mut out, &mut rng, |&member_id| member_id > 4);
-        assert_eq!(vec![Member::suspect(5)], out);
+        members.choose_active_members(usize::MAX, &mut out, &mut rng, |&member_id| {
+            member_id.0.parse::<usize>().expect("number") > 4
+        });
+        assert_eq!(vec![Member::suspect(Id("5"))], out);
+    }
+
+    #[test]
+    fn sets_replaced_id_on_addr_conflict() {
+        let id = crate::testing::ID::new(1).rejoinable();
+        let mut members = Members::new(Vec::from([
+            // 5 active members
+            Member::alive(id),
+        ]));
+
+        let renewed = id.renew().unwrap();
+        let summary = members
+            .apply_existing_if(Member::alive(renewed), |_| true)
+            .expect("member found");
+
+        assert!(summary.apply_successful);
+        assert_eq!(Some(id), summary.replaced_id);
+
+        let another = renewed.renew().unwrap();
+        let summary = members
+            .apply_existing_if(Member::alive(another), |_| false)
+            .expect("member found");
+
+        assert!(!summary.apply_successful);
+        assert_eq!(
+            None, summary.replaced_id,
+            "must not apply if condition fails"
+        );
     }
 }

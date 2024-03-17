@@ -1,14 +1,15 @@
 [package]
 name = "foca"
 version = "0.16.0"
+rust-version = "1.70.0"
 authors = ["Caio <contact@caio.co>"]
 edition = "2021"
 license = "MPL-2.0"
 description = "Gossip-based cluster membership discovery, based on SWIM"
 keywords = ["swim", "gossip", "service-discovery", "memberlist"]
 categories = ["network-programming", "no-std"]
-repository = "https://github.com/caio/foca"
-homepage = "https://github.com/caio/foca"
+repository = "https://caio.co/de/foca/"
+homepage = "https://caio.co/de/foca/"
 documentation = "https://docs.rs/foca"
 
 [package.metadata.docs.rs]
@@ -41,11 +42,7 @@ required-features = ["std"]
 
 [[example]]
 name = "foca_insecure_udp_agent"
-required-features = ["std", "tracing", "postcard-codec"]
-
-[[example]]
-name = "broadcasting"
-required-features = ["bincode-codec"]
+required-features = ["std", "tracing", "bincode-codec"]
 
 [dev-dependencies]
 clap = { version = "2", default-features = false }

@@ -6,8 +6,6 @@ use alloc::vec::Vec;
 
 use crate::{member::Member, ProbeNumber};
 
-// FIXME This whole thing is ugly AF :(
-
 pub(crate) struct Probe<T> {
     direct: Option<Member<T>>,
     indirect: Vec<T>,

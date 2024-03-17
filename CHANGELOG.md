@@ -1,5 +1,41 @@
 # Changelog
 
+## v0.17.0 - UNRELEASED
+
+This release contains significant changes aimed at freeing users
+from having to manage their own version of a unique list of members.
+
+Whilst upgrading won't be just trivially bumping the version, it's
+expected to be very easy and users will probably find themselves
+deleting more code than writing new one when doing it.
+
+Memory and CPU usage should go down since members and cluster
+updates are now bound by the number of distinct addresses whereas
+previously it would grow with the number of distinct identities.
+
+As this is a large change, users should be more cautious when
+upgrading and are welcome to open an issue in case of questions
+or problems.
+
+- **BREAKING**: `foca::Identity` has been revamped and now requires
+  a unique cluster-wide identifier (typically a socket address or a
+  hostname). When multiple identities appear with the same `Addr`
+  the conflict is handled by `Identity::win_addr_conflict`
+- **BREAKING**: _Custom_ broadcasts wire format has changed and
+  handler implementations now only need to emit an identifier (Key)
+  for each value being broadcast instead of managing the allocation
+  See the `BroadcastHandler` documentation and examples for details
+- There's now `Notification::Rename` that signals whenever an
+  identity with a conflicting `Addr` in the cluster gets replaced
+  by a newer one
+- There's no need to manage the list of members externally anymore:
+  foca does it all for you and `Foca::iter_members` only lists
+  the unique (by `Identity::Addr`), freshest identities
+- `examples/foca_insecure_udp_agent.rs` now comes with a fully working
+  custom broadcast example
+- There's now a simple `runtime::AccumulatingRuntime` that's good
+  enough for basic usage if you don't want to implement your own
+
 ## v0.16.0 - 2023-10-01
 
 - Introduce `Foca::iter_membership_state` that provides a view into the
@@ -16,7 +52,7 @@
 ## v0.14.0 - 2023-09-03
 
 - **BREAKING** Custom broadcast handlers now know which member sent the
-  data they're handling to facilitate anti-entropy usecases.
+  data they're handling to facilitate anti-entropy use-cases.
   See: https://github.com/caio/foca/issues/28
 - Foca now only emits DEBUG and TRACE level traces when using the
   `tracing` feature
@@ -28,7 +64,7 @@
 
 - Foca will now gossip upon receiving messages that flag their identity
   as suspect
-- Foca now resumes probing more quickly when recoving from an incorrect
+- Foca now resumes probing more quickly when recovering from an incorrect
   sequence of Timer events
 - The Timer enum now has a very simple Ord implementation to facilitate
   dealing with out-of-order delivery. Sorting a slice of Timer events
@@ -74,7 +110,7 @@
   structs, previously if would yield `Member::id`. This allows
   users to bootstrap a foca instance with existing cluster state
   by feeding its output directly to `Foca::apply_many`
-- **BREAKING**: `Config::remove_down_after` has been increated to
+- **BREAKING**: `Config::remove_down_after` has been increased to
   24h. The previous default value of 2 minutes was still too small
   and would lead to unreasonably large updates backlog on large
   clusters. See: https://github.com/caio/foca/issues/19

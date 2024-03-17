@@ -1,7 +1,10 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+use alloc::collections::VecDeque;
 use core::{cmp::Ordering, time::Duration};
+
+use bytes::{Bytes, BytesMut};
 
 use crate::{Identity, Incarnation};
 
@@ -12,7 +15,10 @@ use crate::{Identity, Incarnation};
 /// Implementations may react directly to it for a fully synchronous
 /// behavior or accumulate-then-drain when dispatching via fancier
 /// mechanisms like async.
-pub trait Runtime<T: Identity> {
+pub trait Runtime<T>
+where
+    T: Identity,
+{
     /// Whenever something changes Foca's state significantly a
     /// notification is emitted.
     ///
@@ -70,6 +76,30 @@ pub enum Notification<T> {
     ///
     /// Can only happen if `MemberUp(T)` happened before.
     MemberDown(T),
+
+    /// Foca has learned that there's a more recent identity with
+    /// the same address and chose to use it instead of the previous
+    /// one.
+    ///
+    /// So `Notification::Rename(A,B)` means that we knew about a member
+    /// `A` but now there's a `B` with the same `Identity::Addr` and
+    /// foca chose to keep it. i.e. `B.win_addr_conflict(A) == true`.
+    ///
+    /// This happens naturally when a member rejoins the cluster after
+    /// any event (maybe they were declared down and `Identity::renew`d
+    /// themselves, maybe it's a restart/upgrade process)
+    ///
+    /// Example:
+    ///
+    /// If `A` was considered Down and `B` is Alive, you'll get
+    /// two notifications, in order:
+    //
+    ///  1. `Notification::Rename(A,B)`
+    ///  2. `Notification::MemberUp(B)`
+    ///
+    /// However, if there's no liveness change (both are active
+    /// or both are down), you'll only get the `Rename` notification
+    Rename(T, T),
 
     /// Foca's current identity is known by at least one active member
     /// of the cluster.
@@ -187,6 +217,145 @@ impl<T: Eq> core::cmp::Ord for Timer<T> {
 ///
 /// Similar in spirit to [`crate::ProbeNumber`].
 pub type TimerToken = u8;
+
+/// A `Runtime` implementation that's good enough for simple use-cases.
+///
+/// It accumulates all events that happen during an interaction with
+/// `crate::Foca` and users must drain those and react accordingly.
+///
+/// Better runtimes would react directly to the events, intead of
+/// needlessly storing the events in a queue.
+///
+/// Users must drain the runtime immediately after interacting with
+/// foca. Example:
+///
+/// See it in use at `examples/foca_insecure_udp_agent.rs`
+pub struct AccumulatingRuntime<T> {
+    to_send: VecDeque<(T, Bytes)>,
+    to_schedule: VecDeque<(Duration, Timer<T>)>,
+    notifications: VecDeque<Notification<T>>,
+    buf: BytesMut,
+}
+
+impl<T> Default for AccumulatingRuntime<T> {
+    fn default() -> Self {
+        Self {
+            to_send: Default::default(),
+            to_schedule: Default::default(),
+            notifications: Default::default(),
+            buf: Default::default(),
+        }
+    }
+}
+
+impl<T: Identity> Runtime<T> for AccumulatingRuntime<T> {
+    fn notify(&mut self, notification: Notification<T>) {
+        self.notifications.push_back(notification);
+    }
+
+    fn send_to(&mut self, to: T, data: &[u8]) {
+        self.buf.extend_from_slice(data);
+        let packet = self.buf.split().freeze();
+        self.to_send.push_back((to, packet));
+    }
+
+    fn submit_after(&mut self, event: Timer<T>, after: Duration) {
+        // We could spawn+sleep here
+        self.to_schedule.push_back((after, event));
+    }
+}
+
+impl<T> AccumulatingRuntime<T> {
+    /// Create a new `AccumulatingRuntime`
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Yields data to be sent to a cluster member `T` in the
+    /// order they've happened.
+    ///
+    /// Users are expected to drain it until it yields `None`
+    /// after every interaction with `crate::Foca`
+    pub fn to_send(&mut self) -> Option<(T, Bytes)> {
+        self.to_send.pop_front()
+    }
+
+    /// Yields timer events and how far in the future they
+    /// must be given back to the foca instance that produced it
+    ///
+    /// Users are expected to drain it until it yields `None`
+    /// after every interaction with `crate::Foca`
+    pub fn to_schedule(&mut self) -> Option<(Duration, Timer<T>)> {
+        self.to_schedule.pop_front()
+    }
+
+    /// Yields event notifications in the order they've happened
+    ///
+    /// Users are expected to drain it until it yields `None`
+    /// after every interaction with `crate::Foca`
+    pub fn to_notify(&mut self) -> Option<Notification<T>> {
+        self.notifications.pop_front()
+    }
+
+    /// Returns how many unhandled events are left in this runtime
+    ///
+    /// Should be brought down to zero after every interaction with
+    /// `crate::Foca`
+    pub fn backlog(&self) -> usize {
+        self.to_send.len() + self.to_schedule.len() + self.notifications.len()
+    }
+}
+
+#[cfg(test)]
+impl<T: PartialEq> AccumulatingRuntime<T> {
+    pub(crate) fn clear(&mut self) {
+        self.notifications.clear();
+        self.to_send.clear();
+        self.to_schedule.clear();
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.notifications.is_empty() && self.to_send.is_empty() && self.to_schedule.is_empty()
+    }
+
+    pub(crate) fn take_all_data(&mut self) -> VecDeque<(T, Bytes)> {
+        core::mem::take(&mut self.to_send)
+    }
+
+    pub(crate) fn take_data(&mut self, dst: T) -> Option<Bytes> {
+        let position = self.to_send.iter().position(|(to, _data)| to == &dst)?;
+
+        self.to_send.remove(position).map(|(_, data)| data)
+    }
+
+    pub(crate) fn take_notification(&mut self, wanted: Notification<T>) -> Option<Notification<T>> {
+        let position = self
+            .notifications
+            .iter()
+            .position(|notification| notification == &wanted)?;
+
+        self.notifications.remove(position)
+    }
+
+    pub(crate) fn take_scheduling(&mut self, timer: Timer<T>) -> Option<Duration> {
+        let position = self
+            .to_schedule
+            .iter()
+            .position(|(_when, event)| event == &timer)?;
+
+        self.to_schedule.remove(position).map(|(when, _)| when)
+    }
+
+    pub(crate) fn find_scheduling<F>(&self, predicate: F) -> Option<&Timer<T>>
+    where
+        F: Fn(&Timer<T>) -> bool,
+    {
+        self.to_schedule
+            .iter()
+            .find(|(_, timer)| predicate(timer))
+            .map(|(_, timer)| timer)
+    }
+}
 
 #[cfg(test)]
 mod tests {

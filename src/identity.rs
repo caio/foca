@@ -27,6 +27,15 @@ use core::fmt;
 /// See `examples/identity_golf.rs` for ideas
 ///
 pub trait Identity: Clone + Eq + fmt::Debug {
+    /// The type of the unique (cluster-wide) address of this identity
+    ///
+    /// A plain identity that cannot auto-rejoin (see `Identity::renew`)
+    /// could have `Addr` the same as `Self` (`std::net::SocketAddr` is
+    /// an example of one)
+    ///
+    /// It's a good idea to have this type as lean as possible
+    type Addr: PartialEq;
+
     /// Opt-in on auto-rejoining by providing a new identity.
     ///
     /// When Foca detects it's been declared Down by another member
@@ -34,34 +43,44 @@ pub trait Identity: Clone + Eq + fmt::Debug {
     /// identity and if it yields a new one will immediately
     /// switch to it and notify the cluster so that downtime is
     /// minimized.
+    ///
+    /// **NOTE** The new identity must win the conflict
     fn renew(&self) -> Option<Self>;
 
-    /// Optionally accept Announce messages addressed to an identity
-    /// that isn't exactly the same as ours.
+    /// Return this identity's unique address
     ///
-    /// Foca discards messages that aren't addressed to its exact
-    /// identity. This means that if your identity has an unpredictable
-    /// field (a UUID or a random number, for example), nobody will
-    /// be able to join with us directly.
+    /// Typically a socket address, a hostname or similar
     ///
-    /// The [`Self::has_same_prefix`] method is how we teach Foca to
-    /// relax this restriction: Upon receiving an Announce message it
-    /// will call `current_id.has_same_prefix(dst)` and if it yields
-    /// `true` the message will be accepted and the new member will
-    /// be allowed to join the cluster.
-    fn has_same_prefix(&self, other: &Self) -> bool;
+    /// On previous versions of this crate, there was a `has_same_prefix()`
+    /// method. This serves the same purpose. Having a concrete type
+    /// instead of just a yes/no allows Foca to fully manage the
+    /// cluster members and keep its memory bound by the number of nodes
+    /// instead of the number of identities
+    fn addr(&self) -> Self::Addr;
+
+    /// Decides which to keep when Foca encounters multiple identities
+    /// sharing the same address
+    ///
+    /// Returning `true` means that self will be kept
+    fn win_addr_conflict(&self, _adversary: &Self) -> bool;
 }
 
 #[cfg(feature = "std")]
 macro_rules! impl_basic_identity {
     ($type: ty) => {
         impl Identity for $type {
+            type Addr = $type;
+
             fn renew(&self) -> Option<Self> {
                 None
             }
 
-            fn has_same_prefix(&self, _other: &Self) -> bool {
-                false
+            fn addr(&self) -> $type {
+                *self
+            }
+
+            fn win_addr_conflict(&self, _adversary: &Self) -> bool {
+                panic!("addr is self, there'll never be a conflict");
             }
         }
     };

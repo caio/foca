@@ -41,6 +41,8 @@ fn main() {
     }
 
     impl Identity for FatIdentity {
+        type Addr = SocketAddrV4;
+
         // We want fast rejoins, so we simply bump the extra field
         // maintaining the actual network address intact
         fn renew(&self) -> Option<Self> {
@@ -50,10 +52,18 @@ fn main() {
             })
         }
 
-        // And we ensure that members can Announce to us without
-        // knowing our (randomized) extra field
-        fn has_same_prefix(&self, other: &Self) -> bool {
-            self.addr.eq(&other.addr)
+        fn addr(&self) -> SocketAddrV4 {
+            self.addr
+        }
+
+        // When an identity is renew()ed, the cluster will start
+        // seeing two distinct FatIdentity with the exact same
+        // Addr.
+        // This teaches foca to choose the right one to keep
+        // In this case, the right one is simply the one with
+        // the higher `extra` field
+        fn win_addr_conflict(&self, adversary: &Self) -> bool {
+            self.extra > adversary.extra
         }
     }
 
@@ -101,8 +111,10 @@ fn main() {
         }
     }
 
-    // And implementing identity is as trivial as it always is:
+    // And implementing identity is as simple as it always is:
     impl Identity for SubnetFixedPortId {
+        type Addr = (u8, u8);
+
         fn renew(&self) -> Option<Self> {
             Some(Self {
                 addr: self.addr,
@@ -110,10 +122,12 @@ fn main() {
             })
         }
 
-        // And we ensure that members can Announce to us without
-        // knowing our (randomized) extra field
-        fn has_same_prefix(&self, other: &Self) -> bool {
-            self.addr.eq(&other.addr)
+        fn addr(&self) -> (u8, u8) {
+            self.addr
+        }
+
+        fn win_addr_conflict(&self, adversary: &Self) -> bool {
+            self.extra > adversary.extra
         }
     }
 

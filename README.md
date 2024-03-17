@@ -39,7 +39,7 @@ showcases how a simple tokio-based agent could look like and lets
 you actually run and see Foca swimming.
 
 ~~~
-$ cargo run --features std,tracing,postcard-codec --example foca_insecure_udp_agent -- --help
+$ cargo run --features std,tracing,bincode-codec --example foca_insecure_udp_agent -- --help
 foca_insecure_udp_agent 
 
 USAGE:
