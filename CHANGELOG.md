@@ -1,9 +1,24 @@
 # Changelog
 
-## v0.17.0 - 2024-??-??
+## v0.17.0 - UNRELEASED
+
+This release contains significant changes aimed at freeing users
+from having to manage their own version of a unique list of members.
+
+Whilst upgrading won't be just trivially bumping the version, it's
+expected to be very easy and users will probably find themselves
+deleting more code than writing new one when doing it.
+
+Memory and CPU usage should go down since members and cluster
+updates are now bound by the number of distinct addresses whereas
+previously it would grow with the number of distinct identities.
+
+As this is a large change, users should be more cautious when
+upgrading and are welcome to open an issue in case of questions
+or problems.
 
 - **BREAKING**: `foca::Identity` has been revamped and now requires
-  a unique cluster-wide identifier (typically a socket addrees or a
+  a unique cluster-wide identifier (typically a socket address or a
   hostname). When multiple identities appear with the same `Addr`
   the conflict is handled by `Identity::win_addr_conflict`
 - **BREAKING**: _Custom_ broadcasts wire format has changed and
@@ -37,7 +52,7 @@
 ## v0.14.0 - 2023-09-03
 
 - **BREAKING** Custom broadcast handlers now know which member sent the
-  data they're handling to facilitate anti-entropy usecases.
+  data they're handling to facilitate anti-entropy use-cases.
   See: https://github.com/caio/foca/issues/28
 - Foca now only emits DEBUG and TRACE level traces when using the
   `tracing` feature
@@ -49,7 +64,7 @@
 
 - Foca will now gossip upon receiving messages that flag their identity
   as suspect
-- Foca now resumes probing more quickly when recoving from an incorrect
+- Foca now resumes probing more quickly when recovering from an incorrect
   sequence of Timer events
 - The Timer enum now has a very simple Ord implementation to facilitate
   dealing with out-of-order delivery. Sorting a slice of Timer events
@@ -95,7 +110,7 @@
   structs, previously if would yield `Member::id`. This allows
   users to bootstrap a foca instance with existing cluster state
   by feeding its output directly to `Foca::apply_many`
-- **BREAKING**: `Config::remove_down_after` has been increated to
+- **BREAKING**: `Config::remove_down_after` has been increased to
   24h. The previous default value of 2 minutes was still too small
   and would lead to unreasonably large updates backlog on large
   clusters. See: https://github.com/caio/foca/issues/19
