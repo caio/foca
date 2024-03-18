@@ -936,8 +936,9 @@ where
         // that we can keep reusing its already-allocated space.
         let mut updates = mem::take(&mut self.member_buf);
         self.apply_many(updates.drain(..), &mut runtime)?;
-        debug_assert!(
-            self.member_buf.is_empty(),
+        debug_assert_eq!(
+            0,
+            self.member_buf.capacity(),
             "member_buf modified while taken"
         );
         self.member_buf = updates;
@@ -1385,6 +1386,7 @@ where
             .map_err(anyhow::Error::msg)
             .map_err(Error::Encode)
         {
+            debug_assert_eq!(0, self.send_buf.capacity(), "send_buf modified while taken");
             self.send_buf = buf.into_inner();
             return Err(err);
         }
@@ -1476,6 +1478,7 @@ where
         runtime.send_to(dst, &data);
 
         // absorb the buf into send_buf so we can reuse its capacity
+        debug_assert_eq!(0, self.send_buf.capacity(), "send_buf modified while taken");
         self.send_buf = data;
         Ok(())
     }
