@@ -213,14 +213,7 @@ async fn main() -> Result<(), anyhow::Error> {
     } = params;
 
     let rng = StdRng::from_entropy();
-    let config = {
-        let mut c = Config::simple();
-        // With this setting you can suspend (^Z) one process,
-        // wait for it the member to be declared down then resume
-        // it (fg) and foca should recover by itself
-        c.notify_down_members = true;
-        c
-    };
+    let config = Config::new_lan(std::num::NonZeroU32::new(10).unwrap());
 
     let buf_len = config.max_packet_size.get();
     let mut recv_buf = vec![0u8; buf_len];
