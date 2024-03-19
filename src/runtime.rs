@@ -167,6 +167,11 @@ pub enum Timer<T> {
     /// specified by [`crate::Config::periodic_announce`]
     PeriodicAnnounce(TimerToken),
 
+    /// Sends a [`crate::Message::Announce`] to randomly chosen members
+    /// that are condidered [`crate::State::Down`] as specified by
+    /// [`crate::Config::periodic_announce_to_down_members`]
+    PeriodicAnnounceDown(TimerToken),
+
     /// Sends a [`crate::Message::Gossip`] to randomly chosen members as
     /// specified by [`crate::Config::periodic_gossip`]
     PeriodicGossip(TimerToken),
@@ -192,6 +197,7 @@ impl<T> Timer<T> {
             Timer::PeriodicAnnounce(_) => 3,
             Timer::PeriodicGossip(_) => 4,
             Timer::RemoveDown(_) => 5,
+            Timer::PeriodicAnnounceDown(_) => 6,
         }
     }
 }

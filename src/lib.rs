@@ -480,6 +480,18 @@ where
         )
     }
 
+    fn announce_to_down(&mut self, num_members: usize, mut runtime: impl Runtime<T>) -> Result<()> {
+        self.member_buf.clear();
+        self.members
+            .choose_down_members(num_members, &mut self.member_buf, &mut self.rng);
+
+        while let Some(chosen) = self.member_buf.pop() {
+            self.send_message(chosen.into_identity(), Message::Announce, &mut runtime)?;
+        }
+
+        Ok(())
+    }
+
     // Pick `num_members` random active members and send `msg` to them
     fn choose_and_send(
         &mut self,
@@ -765,6 +777,19 @@ where
                 }
                 Ok(())
             }
+            Timer::PeriodicAnnounceDown(token) => {
+                if token == self.timer_token && self.connection_state == ConnectionState::Connected
+                {
+                    if let Some(ref params) = self.config.periodic_announce_to_down_members {
+                        runtime.submit_after(
+                            Timer::PeriodicAnnounceDown(self.timer_token),
+                            params.frequency,
+                        );
+                        self.announce_to_down(params.num_members.get(), runtime)?;
+                    }
+                }
+                Ok(())
+            }
         }
     }
 
@@ -793,15 +818,19 @@ where
     /// normal operations, changing the configuration parameters is a
     /// nicer alternative to recreating the Foca instance.
     ///
-    /// Presently, attempting to change [`Config::probe_period`] or
-    /// [`Config::probe_rtt`] results in [`Error::InvalidConfig`]; For
-    /// such cases it's recommended to recreate your Foca instance. When
-    /// an error occurs, every configuration parameter remains
+    /// Changing [`Config::probe_period`], [`Config::probe_rtt`] or
+    /// trying to _enable_ any `periodic_` setting results in
+    /// [`Error::InvalidConfig`]; For such cases it's recommended to
+    /// recreate your Foca instance.
+    ///
+    /// When an error occurs, every configuration parameter remains
     /// unchanged.
     pub fn set_config(&mut self, config: Config) -> Result<()> {
         if self.config.probe_period != config.probe_period
             || self.config.probe_rtt != config.probe_rtt
             || (self.config.periodic_announce.is_none() && config.periodic_announce.is_some())
+            || (self.config.periodic_announce_to_down_members.is_none()
+                && config.periodic_announce_to_down_members.is_some())
             || (self.config.periodic_gossip.is_none() && config.periodic_gossip.is_some())
         {
             Err(Error::InvalidConfig)
@@ -1325,6 +1354,13 @@ where
 
         if let Some(ref params) = self.config.periodic_announce {
             runtime.submit_after(Timer::PeriodicAnnounce(self.timer_token), params.frequency);
+        }
+
+        if let Some(ref params) = self.config.periodic_announce_to_down_members {
+            runtime.submit_after(
+                Timer::PeriodicAnnounceDown(self.timer_token),
+                params.frequency,
+            );
         }
 
         if let Some(ref params) = self.config.periodic_gossip {
@@ -3721,14 +3757,18 @@ mod tests {
     }
 
     // There are multiple "do this thing periodically" settings. This
-    // helps test those. Takes:
-    // - something that knows which configuration to set
-    // - something that knows which event should be sent
-    // - the message that should be sent
-    fn check_periodic_behaviour<F, G>(config_setter: F, mut event_maker: G, message: Message<ID>)
+    // helps test those.
+    // It creates a Foca instance (ID=1) with 2 active members (IDs 2 and 3)
+    // and 2 down members (IDs 4 and 5), then allows the caller to
+    // verify the runtime afterwards
+    fn check_periodic_behaviour<F, G, V>(config_setter: F, mut event_maker: G, validator: V)
     where
+        // something that knows which configuration to set
         F: Fn(&mut Config, config::PeriodicParams),
+        // something that knows which event should be sent
         G: FnMut(TimerToken) -> Timer<ID>,
+        // something to inspect the runtime for expected events
+        V: Fn(AccumulatingRuntime<ID>),
     {
         let frequency = Duration::from_millis(500);
         let num_members = NonZeroUsize::new(2).unwrap();
@@ -3746,7 +3786,14 @@ mod tests {
 
         // When it becomes active (i.e.: has at least one active member)
         assert_eq!(Ok(()), foca.apply(Member::alive(ID::new(2)), &mut runtime));
-        assert_eq!(Ok(()), foca.apply(Member::alive(ID::new(3)), &mut runtime));
+        assert_eq!(
+            Ok(()),
+            foca.apply(Member::suspect(ID::new(3)), &mut runtime)
+        );
+        assert_eq!(Ok(()), foca.apply(Member::down(ID::new(4)), &mut runtime));
+        assert_eq!(Ok(()), foca.apply(Member::down(ID::new(5)), &mut runtime));
+
+        assert_eq!(2, foca.num_members());
 
         // Should schedule the given event
         expect_scheduling!(runtime, event_maker(foca.timer_token()), frequency);
@@ -3761,11 +3808,10 @@ mod tests {
         // It should've scheduled the event again
         expect_scheduling!(runtime, event_maker(foca.timer_token()), frequency);
 
+        validator(runtime);
         // And sent the message to `num_members` random members
         // (since num_members=2 and this instance only knows about two, we know
         // which should've been picked)
-        expect_message!(runtime, ID::new(2), message);
-        expect_message!(runtime, ID::new(3), message);
     }
 
     #[test]
@@ -3775,7 +3821,10 @@ mod tests {
                 c.periodic_gossip = Some(p);
             },
             |t: TimerToken| -> Timer<ID> { Timer::PeriodicGossip(t) },
-            Message::Gossip,
+            |mut runtime| {
+                expect_message!(runtime, ID::new(2), Message::<ID>::Gossip);
+                expect_message!(runtime, ID::new(3), Message::<ID>::Gossip);
+            },
         );
     }
 
@@ -3786,7 +3835,24 @@ mod tests {
                 c.periodic_announce = Some(p);
             },
             |t: TimerToken| -> Timer<ID> { Timer::PeriodicAnnounce(t) },
-            Message::Announce,
+            |mut runtime| {
+                expect_message!(runtime, ID::new(2), Message::<ID>::Announce);
+                expect_message!(runtime, ID::new(3), Message::<ID>::Announce);
+            },
+        );
+    }
+
+    #[test]
+    fn periodic_announce_to_down_members_behaviour() {
+        check_periodic_behaviour(
+            |c: &mut Config, p: config::PeriodicParams| {
+                c.periodic_announce_to_down_members = Some(p);
+            },
+            |t: TimerToken| -> Timer<ID> { Timer::PeriodicAnnounceDown(t) },
+            |mut runtime| {
+                expect_message!(runtime, ID::new(4), Message::<ID>::Announce);
+                expect_message!(runtime, ID::new(5), Message::<ID>::Announce);
+            },
         );
     }
 
@@ -3799,6 +3865,29 @@ mod tests {
         let mut foca = Foca::new(ID::new(1), c.clone(), rng(), codec());
 
         c.periodic_announce = Some(config::PeriodicParams {
+            frequency: Duration::from_secs(5),
+            num_members: NonZeroUsize::new(1).unwrap(),
+        });
+
+        // Must not be able to enable it during runtime
+        assert_eq!(Err(Error::InvalidConfig), foca.set_config(c.clone()));
+
+        // However, a foca that starts with periodic announce enabled
+        let mut foca = Foca::new(ID::new(1), c, rng(), codec());
+
+        // Is able to turn it off
+        assert_eq!(Ok(()), foca.set_config(config()));
+    }
+
+    #[test]
+    fn periodic_announce_to_down_members_cannot_be_enabled_at_runtime() {
+        let mut c = config();
+        assert!(c.periodic_announce_to_down_members.is_none());
+
+        // A foca instance that's running without periodic announce
+        let mut foca = Foca::new(ID::new(1), c.clone(), rng(), codec());
+
+        c.periodic_announce_to_down_members = Some(config::PeriodicParams {
             frequency: Duration::from_secs(5),
             num_members: NonZeroUsize::new(1).unwrap(),
         });

@@ -25,11 +25,15 @@ or problems.
   handler implementations now only need to emit an identifier (Key)
   for each value being broadcast instead of managing the allocation
   See the `BroadcastHandler` documentation and examples for details
+- `Config::periodic_announce_to_down_members`: Foca periodically
+  tries to join with members it considers down, as an attempt to
+  recover from a network partition. This setting is **enabled** by
+  default for `Config::new_wan` and `Config::new_lan`
 - There's now `Notification::Rename` that signals whenever an
   identity with a conflicting `Addr` in the cluster gets replaced
   by a newer one
 - There's no need to manage the list of members externally anymore:
-  foca does it all for you and `Foca::iter_members` only lists
+  Foca does it all for you and `Foca::iter_members` only lists
   the unique (by `Identity::Addr`), freshest identities
 - `examples/foca_insecure_udp_agent.rs` now comes with a fully working
   custom broadcast example

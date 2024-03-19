@@ -209,29 +209,21 @@ where
         }
     }
 
-    /// XXX This used to be a `next_members()` which would make use of the
-    ///     already shuffled state and then simply advance the cursor
-    ///     to trigger the next shuffle-after-round-robin that `next()`
-    ///     does. However I'm not sure it was a good idea: the point
-    ///     of what `next()` does is giving some sort of determinism giving
-    ///     a high chance that every member will be *pinged* periodically
-    ///     and using the same logic for other "pick random member"
-    ///     mechanisms might break the math.
-    pub(crate) fn choose_active_members<F>(
+    fn choose_members<F>(
         &self,
         wanted: usize,
         output: &mut Vec<Member<T>>,
         mut rng: impl Rng,
         picker: F,
     ) where
-        F: Fn(&T) -> bool,
+        F: Fn(&Member<T>) -> bool,
     {
         // Basic reservoir sampling
         let mut num_chosen = 0;
         let mut num_seen = 0;
 
-        for member in self.iter_active() {
-            if !picker(member.id()) {
+        for member in &self.inner {
+            if !picker(member) {
                 continue;
             }
 
@@ -246,6 +238,29 @@ where
                 }
             }
         }
+    }
+
+    pub(crate) fn choose_down_members(
+        &self,
+        wanted: usize,
+        output: &mut Vec<Member<T>>,
+        rng: impl Rng,
+    ) {
+        self.choose_members(wanted, output, rng, |member| !member.is_active());
+    }
+
+    pub(crate) fn choose_active_members<F>(
+        &self,
+        wanted: usize,
+        output: &mut Vec<Member<T>>,
+        rng: impl Rng,
+        picker: F,
+    ) where
+        F: Fn(&T) -> bool,
+    {
+        self.choose_members(wanted, output, rng, |member| {
+            member.is_active() && picker(member.id())
+        });
     }
 
     pub(crate) fn remove_if_down(&mut self, id: &T) -> Option<Member<T>> {
@@ -763,6 +778,12 @@ mod tests {
             member_id.0.parse::<usize>().expect("number") > 4
         });
         assert_eq!(vec![Member::suspect(Id("5"))], out);
+
+        out.clear();
+        members.choose_down_members(3, &mut out, &mut rng);
+        assert_eq!(2, out.len());
+        assert!(out.iter().any(|m| m.id == Id("7")));
+        assert!(out.iter().any(|m| m.id == Id("6")));
     }
 
     #[test]

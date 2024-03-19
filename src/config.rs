@@ -142,6 +142,21 @@ pub struct Config {
     /// disabled if you're aiming at pure SWIM behavior.
     pub periodic_announce: Option<PeriodicParams>,
 
+    /// How often should foca send an announce message to members it currently
+    /// considers [`crate::State::Down`]
+    ///
+    /// This setting instructs foca to try and talk to members that are down
+    /// so that it can (eventually) recover from network partitions without
+    /// additional hand-holding.
+    ///
+    /// It's particularly useful when used in tandem with identities that
+    /// can auto-rejoin (`crate::Identity::renew`) and with
+    /// `Self::notify_down_members` enabled.
+    ///
+    /// This feature is an extension to the SWIM protocol and should be left
+    /// disabled if you're aiming at pure SWIM behavior.
+    pub periodic_announce_to_down_members: Option<PeriodicParams>,
+
     /// How often should foca send cluster updates to peers
     ///
     /// By default, SWIM disseminates cluster updates during the direct and
@@ -197,6 +212,7 @@ impl Config {
             notify_down_members: false,
 
             periodic_announce: None,
+            periodic_announce_to_down_members: None,
             periodic_gossip: None,
         }
     }
@@ -239,6 +255,12 @@ impl Config {
                 frequency: Duration::from_secs(30),
                 num_members: NonZeroUsize::new(1).unwrap(),
             }),
+
+            periodic_announce_to_down_members: Some(PeriodicParams {
+                frequency: Duration::from_secs(65),
+                num_members: NonZeroUsize::new(2).unwrap(),
+            }),
+
             periodic_gossip: Some(PeriodicParams {
                 frequency: Duration::from_millis(200),
                 num_members: NonZeroUsize::new(3).unwrap(),
@@ -275,6 +297,12 @@ impl Config {
                 frequency: Duration::from_secs(60),
                 num_members: NonZeroUsize::new(2).unwrap(),
             }),
+
+            periodic_announce_to_down_members: Some(PeriodicParams {
+                frequency: Duration::from_secs(125),
+                num_members: NonZeroUsize::new(3).unwrap(),
+            }),
+
             periodic_gossip: Some(PeriodicParams {
                 frequency: Duration::from_millis(500),
                 num_members: NonZeroUsize::new(4).unwrap(),
