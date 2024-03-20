@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.17.0 - UNRELEASED
+## v0.17.0 - 2024-03-20
 
 This release contains significant changes aimed at freeing users
 from having to manage their own version of a unique list of members.
