@@ -120,9 +120,8 @@ own implementation. Since then I did take a non-thorough look at it:
   using Foca to do a similar thing if desired.
 
 * Its configuration parameters change based on (current) cluster
-  size. It's super useful for a more plug-and-play experience, so
-  I want introduce something along those lines in the future, likely
-  by pulling `Config` into Foca as a trait implementation.
+  size. Users can make use of `Config::new_{lan,wan}` along with
+  `Foca::set_config` to achieve the same
 
 # References
 
