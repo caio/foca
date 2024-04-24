@@ -304,25 +304,31 @@ where
                         is_active_now: known_member.is_active(),
                         apply_successful: false,
                         changed_active_set: false,
-                        replaced_id: None,
+                        conflict: ConflictResult::Lost,
                     });
                 }
                 force_apply = true;
             }
 
             if !condition(known_member) {
+                let conflict = if force_apply {
+                    ConflictResult::FailedCondition
+                } else {
+                    ConflictResult::NoConflict
+                };
+
                 return Some(ApplySummary {
                     is_active_now: known_member.is_active(),
                     apply_successful: false,
                     changed_active_set: false,
-                    replaced_id: None,
+                    conflict,
                 });
             }
             let was_active = known_member.is_active();
-            let mut replaced_id = None;
+            let mut conflict = ConflictResult::NoConflict;
             let apply_successful = if force_apply {
                 core::mem::swap(&mut known_member.id, &mut update.id);
-                replaced_id = Some(update.id);
+                conflict = ConflictResult::Replaced(update.id);
                 known_member.state = update.state;
                 known_member.incarnation = update.incarnation;
                 true
@@ -345,7 +351,7 @@ where
                 is_active_now,
                 apply_successful,
                 changed_active_set,
-                replaced_id,
+                conflict,
             })
         } else {
             None
@@ -377,7 +383,7 @@ where
                     apply_successful: true,
                     // Registering a new active member changes the active set
                     changed_active_set: is_active_now,
-                    replaced_id: None,
+                    conflict: ConflictResult::NoConflict,
                 }
             })
     }
@@ -389,7 +395,15 @@ pub(crate) struct ApplySummary<T> {
     pub(crate) is_active_now: bool,
     pub(crate) apply_successful: bool,
     pub(crate) changed_active_set: bool,
-    pub(crate) replaced_id: Option<T>,
+    pub(crate) conflict: ConflictResult<T>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum ConflictResult<T> {
+    NoConflict,
+    Replaced(T),
+    Lost,
+    FailedCondition,
 }
 
 #[cfg(test)]
@@ -617,7 +631,7 @@ mod tests {
                 is_active_now: true,
                 apply_successful: true,
                 changed_active_set: true,
-                replaced_id: None,
+                conflict: ConflictResult::NoConflict,
             },
             res,
         );
@@ -632,7 +646,7 @@ mod tests {
                 is_active_now: true,
                 apply_successful: false,
                 changed_active_set: false,
-                replaced_id: None,
+                conflict: ConflictResult::NoConflict,
             },
             res,
         );
@@ -646,7 +660,7 @@ mod tests {
                 is_active_now: true,
                 apply_successful: true,
                 changed_active_set: false,
-                replaced_id: None,
+                conflict: ConflictResult::NoConflict,
             },
             res,
         );
@@ -659,7 +673,7 @@ mod tests {
                 is_active_now: false,
                 apply_successful: true,
                 changed_active_set: true,
-                replaced_id: None,
+                conflict: ConflictResult::NoConflict,
             },
             res,
         );
@@ -673,7 +687,7 @@ mod tests {
                 is_active_now: false,
                 apply_successful: true,
                 changed_active_set: false,
-                replaced_id: None,
+                conflict: ConflictResult::NoConflict,
             },
             res,
         );
@@ -806,7 +820,7 @@ mod tests {
             .expect("member found");
 
         assert!(summary.apply_successful);
-        assert_eq!(Some(id), summary.replaced_id);
+        assert_eq!(ConflictResult::Replaced(id), summary.conflict);
 
         let another = renewed.renew().unwrap();
         let summary = members
@@ -815,8 +829,18 @@ mod tests {
 
         assert!(!summary.apply_successful);
         assert_eq!(
-            None, summary.replaced_id,
+            ConflictResult::FailedCondition,
+            summary.conflict,
             "must not apply if condition fails"
         );
+
+        // trying to go back to the past leads to
+        // conflict resolution failure
+        let summary = members
+            .apply_existing_if(Member::alive(id), |_| true)
+            .expect("member found");
+
+        assert_eq!(ConflictResult::Lost, summary.conflict,);
+        assert!(!summary.apply_successful, "must not apply if conflict lost");
     }
 }

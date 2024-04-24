@@ -1228,10 +1228,15 @@ where
     fn apply_update(&mut self, update: Member<T>, runtime: impl Runtime<T>) -> Result<bool> {
         debug_assert_ne!(&self.identity, update.id());
         let summary = self.members.apply(update.clone(), &mut self.rng);
-        let active = summary.is_active_now;
+
+        let update_is_active = match summary.conflict {
+            member::ConflictResult::Lost | member::ConflictResult::FailedCondition => false,
+            _ => summary.is_active_now,
+        };
+
         self.handle_apply_summary(summary, update, runtime)?;
 
-        Ok(active)
+        Ok(update_is_active)
     }
 
     fn handle_apply_summary(
@@ -1263,7 +1268,7 @@ where
             }
         }
 
-        if let Some(old) = summary.replaced_id {
+        if let member::ConflictResult::Replaced(old) = summary.conflict {
             #[cfg(feature = "tracing")]
             tracing::debug!(
                 previous_id = tracing::field::debug(&old),
@@ -4284,5 +4289,52 @@ mod tests {
         // Foca must not request `renewed` to probe `probed`
         // on its behalf
         assert!(runtime.take_all_data().is_empty());
+    }
+
+    #[test]
+    fn discards_known_old_identities_data() {
+        let mut foca = Foca::new(ID::new(1), config(), rng(), codec());
+        let mut runtime = AccumulatingRuntime::new();
+
+        // ID=2 is a member that rejoined at least once
+        let old = ID::new(2);
+        let new = old.bump();
+        assert_eq!(
+            Ok(()),
+            foca.apply_many(
+                [Member::alive(old), Member::alive(new)].into_iter(),
+                &mut runtime
+            )
+        );
+        assert_eq!(1, foca.num_members());
+
+        // If `old` sends a message about ID=3 being alive
+        let msg = encode((
+            Header {
+                src: old,
+                src_incarnation: Incarnation::default(),
+                dst: ID::new(1),
+                message: Message::Feed,
+            },
+            vec![Member::alive(ID::new(3))],
+        ));
+
+        assert_eq!(Ok(()), foca.handle_data(&msg, &mut runtime));
+        // It should be ignored
+        assert_eq!(1, foca.num_members());
+
+        // The same message sent by `new` shouldn't
+        let msg = encode((
+            Header {
+                src: new,
+                src_incarnation: Incarnation::default(),
+                dst: ID::new(1),
+                message: Message::Feed,
+            },
+            vec![Member::alive(ID::new(3))],
+        ));
+
+        assert_eq!(Ok(()), foca.handle_data(&msg, &mut runtime));
+        assert_eq!(2, foca.num_members());
     }
 }

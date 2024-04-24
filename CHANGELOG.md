@@ -7,6 +7,9 @@
   No harm done to the cluster state, but would lead to noise in
   the form of `Error::DataFromOurselves` in the member logs
   See: https://github.com/caio/foca/issues/34
+- Bugfix: messages from known stale identities were being accepted
+  instead being discarded. Unlikely to have impacted anyone
+  that isn't replaying data
 
 ## v0.17.0 - 2024-03-20
 
