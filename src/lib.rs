@@ -646,6 +646,17 @@ where
                     return Ok(());
                 }
 
+                if !self.members.is_active(&probed_id) {
+                    // Probed member is not active anymore
+                    // Nothing else to be done this probe cycle
+                    #[cfg(feature = "tracing")]
+                    tracing::debug!(
+                        probed_id = tracing::field::debug(&probed_id),
+                        "Probed member isn't active anymore"
+                    );
+                    return Ok(());
+                }
+
                 self.member_buf.clear();
                 self.members.choose_active_members(
                     self.config.num_indirect_probes.get(),
@@ -4245,5 +4256,33 @@ mod tests {
             assert_eq!(1, foca.num_members());
             assert!(runtime.is_empty());
         }
+    }
+
+    #[test]
+    fn no_indirect_cycle_if_probed_disappears() {
+        // ref https://github.com/caio/foca/issues/34
+
+        let (mut foca, probed, send_indirect_probe) = craft_probing_foca(1, config());
+        let mut runtime = AccumulatingRuntime::new();
+        assert_eq!(1, foca.num_members());
+
+        // while `foca` is probing `probed`, it learns
+        // that it changed its identity for whatever reason
+        let renewed = probed.bump();
+        assert_eq!(Ok(()), foca.apply(Member::alive(renewed), &mut runtime));
+        assert_eq!(1, foca.num_members());
+        runtime.clear();
+
+        // So when the indirect part of the cycle fires
+        assert_eq!(Ok(()), foca.handle_timer(send_indirect_probe, &mut runtime));
+
+        // Since `renewed` and `probed` are technically the same
+        assert_eq!(renewed.addr(), probed.addr());
+        assert!(renewed.win_addr_conflict(&probed));
+        assert!(!probed.win_addr_conflict(&renewed));
+
+        // Foca must not request `renewed` to probe `probed`
+        // on its behalf
+        assert!(runtime.take_all_data().is_empty());
     }
 }

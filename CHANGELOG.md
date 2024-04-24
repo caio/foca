@@ -1,5 +1,13 @@
 # Changelog
 
+## UNRELEASED
+
+- Bugfix: when restarting members, there was a chance foca would
+  ask a member to ping its own previous identity.
+  No harm done to the cluster state, but would lead to noise in
+  the form of `Error::DataFromOurselves` in the member logs
+  See: https://github.com/caio/foca/issues/34
+
 ## v0.17.0 - 2024-03-20
 
 This release contains significant changes aimed at freeing users

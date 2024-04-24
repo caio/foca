@@ -276,6 +276,12 @@ where
         self.inner.iter().filter(|m| m.is_active())
     }
 
+    pub(crate) fn is_active(&self, id: &T) -> bool {
+        self.inner
+            .iter()
+            .any(|member| &member.id == id && member.is_active())
+    }
+
     pub(crate) fn apply_existing_if<F: Fn(&Member<T>) -> bool>(
         &mut self,
         mut update: Member<T>,
