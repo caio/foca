@@ -1,6 +1,6 @@
 # Changelog
 
-## UNRELEASED
+## v0.17.1 - 2024-04-25
 
 - Bugfix: when restarting members, there was a chance foca would
   ask a member to ping its own previous identity.
