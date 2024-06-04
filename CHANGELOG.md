@@ -1,6 +1,6 @@
 # Changelog
 
-## UNRELEASED
+## v0.17.2 - 2024-06-04
 
 - Bugfix: foca could incorrectly attach custom broadcasts to
   messages supposed to be lightweight leading to strange decode
