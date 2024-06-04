@@ -356,8 +356,8 @@ impl Codec<ID> for BadCodec {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg(any(feature = "bincode-codec", feature = "postcard-codec"))]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct TrivialID(u64);
 
 #[cfg(any(feature = "bincode-codec", feature = "postcard-codec"))]
