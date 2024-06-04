@@ -1,5 +1,13 @@
 # Changelog
 
+## UNRELEASED
+
+- Bugfix: foca could incorrectly attach custom broadcasts to
+  messages supposed to be lightweight leading to strange decode
+  errors in the logs and slowing down cluster self-healing, but
+  no further impact on functionality
+  See: https://github.com/caio/foca/issues/35
+
 ## v0.17.1 - 2024-04-25
 
 - Bugfix: when restarting members, there was a chance foca would
