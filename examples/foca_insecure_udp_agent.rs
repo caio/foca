@@ -546,10 +546,21 @@ impl Handler {
     }
 }
 
+#[derive(Debug)]
+struct Msg(String);
+
+impl core::fmt::Display for Msg {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl core::error::Error for Msg {}
+
 impl foca::BroadcastHandler<ID> for Handler {
     type Key = BroadcastKey;
 
-    type Error = String;
+    type Error = Msg;
 
     fn receive_item(
         &mut self,
@@ -565,7 +576,7 @@ impl foca::BroadcastHandler<ID> for Handler {
         let Broadcast { key, msg }: Broadcast = self
             .opts
             .deserialize_from(&mut reader)
-            .map_err(|err| format!("bad broadcast: {err}"))?;
+            .map_err(|err| Msg(format!("bad broadcast: {err}")))?;
 
         let is_new_message = self
             .messages

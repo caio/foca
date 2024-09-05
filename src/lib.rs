@@ -116,7 +116,7 @@
 )]
 
 extern crate alloc;
-use alloc::vec::Vec;
+use alloc::{boxed::Box, vec::Vec};
 
 #[cfg(feature = "std")]
 extern crate std;
@@ -206,6 +206,7 @@ impl<T, C, RNG> Foca<T, C, RNG, NoCustomBroadcast>
 where
     T: Identity,
     C: Codec<T>,
+    C::Error: core::error::Error + Send,
     RNG: Rng,
 {
     /// Create a new Foca instance with custom broadcasts disabled.
@@ -233,17 +234,14 @@ where
     }
 }
 
-// XXX Does it make sense to have different associated type restrictions
-//     based on a feature flag? Say: when using `std` we would enforce
-//     that `Codec::Error` and `BroadcastHandler::Error` both implement
-//     `std::error::Error`, thus instead of wrapping these errors via
-//     `anyhow::Error::msg` we can use `anyhow::Error::new`.
 impl<T, C, RNG, B> Foca<T, C, RNG, B>
 where
     T: Identity,
     C: Codec<T>,
+    C::Error: core::error::Error,
     RNG: Rng,
     B: BroadcastHandler<T>,
+    B::Error: core::error::Error + 'static,
 {
     /// Initialize a new Foca instance.
     pub fn with_custom_broadcast(
@@ -589,8 +587,7 @@ where
         if let Some(key) = self
             .broadcast_handler
             .receive_item(data, None)
-            .map_err(anyhow::Error::msg)
-            .map_err(Error::CustomBroadcast)?
+            .map_err(|e| Error::CustomBroadcast(Box::new(e)))?
         {
             self.custom_broadcasts.add_or_replace(
                 key,
@@ -878,8 +875,7 @@ where
         let header = self
             .codec
             .decode_header(&mut data)
-            .map_err(anyhow::Error::msg)
-            .map_err(Error::Decode)?;
+            .map_err(|e| Error::Decode(Box::new(e)))?;
 
         #[cfg(feature = "tracing")]
         span.record("header", tracing::field::debug(&header));
@@ -918,8 +914,7 @@ where
                 self.member_buf.push(
                     self.codec
                         .decode_member(&mut data)
-                        .map_err(anyhow::Error::msg)
-                        .map_err(Error::Decode)?,
+                        .map_err(|e| Error::Decode(Box::new(e)))?,
                 );
             }
         }
@@ -1097,8 +1092,7 @@ where
         let mut buf = Vec::new();
         self.codec
             .encode_member(&member, &mut buf)
-            .map_err(anyhow::Error::msg)
-            .map_err(Error::Encode)?;
+            .map_err(|e| Error::Encode(Box::new(e)))?;
 
         Ok(buf)
     }
@@ -1306,8 +1300,7 @@ where
             if let Some(key) = self
                 .broadcast_handler
                 .receive_item(pkt, sender)
-                .map_err(anyhow::Error::msg)
-                .map_err(Error::CustomBroadcast)?
+                .map_err(|e| Error::CustomBroadcast(Box::new(e)))?
             {
                 #[cfg(feature = "tracing")]
                 tracing::trace!(len = pkt_len, "received broadcast item");
@@ -1434,8 +1427,7 @@ where
         if let Err(err) = self
             .codec
             .encode_header(&header, &mut buf)
-            .map_err(anyhow::Error::msg)
-            .map_err(Error::Encode)
+            .map_err(|e| Error::Encode(Box::new(e)))
         {
             debug_assert_eq!(0, self.send_buf.capacity(), "send_buf modified while taken");
             self.send_buf = buf.into_inner();
@@ -1681,8 +1673,7 @@ impl fmt::Display for BroadcastsDisabledError {
     }
 }
 
-#[cfg(feature = "std")]
-impl std::error::Error for BroadcastsDisabledError {}
+impl core::error::Error for BroadcastsDisabledError {}
 
 impl<T> BroadcastHandler<T> for NoCustomBroadcast {
     type Key = &'static [u8];
@@ -1712,8 +1703,10 @@ impl<T, C, RNG, B> Foca<T, C, RNG, B>
 where
     T: Identity,
     C: Codec<T>,
+    C::Error: core::error::Error,
     RNG: rand::Rng,
     B: BroadcastHandler<T>,
+    B::Error: core::error::Error + Send,
 {
     pub fn incarnation(&self) -> Incarnation {
         self.incarnation
@@ -1872,6 +1865,8 @@ mod tests {
             }
         }
 
+        impl core::error::Error for UnitError {}
+
         impl Codec<ID> for UnitErroringCodec {
             type Error = UnitError;
 
@@ -1918,12 +1913,12 @@ mod tests {
         let mut foca = Foca::new(ID::new(1), Config::simple(), rng(), UnitErroringCodec);
 
         assert_eq!(
-            Err(Error::Encode(anyhow::Error::msg(UnitError))),
+            Err(Error::Encode(alloc::boxed::Box::new(UnitError))),
             foca.announce(ID::new(2), NoopRuntime)
         );
 
         assert_eq!(
-            Err(Error::Decode(anyhow::Error::msg(UnitError))),
+            Err(Error::Decode(alloc::boxed::Box::new(UnitError))),
             foca.handle_data(b"hue", NoopRuntime)
         );
     }
@@ -3425,9 +3420,9 @@ mod tests {
                 buf.get_u16()
             }
 
-            fn from_bytes(mut src: impl Buf) -> core::result::Result<Self, &'static str> {
+            fn from_bytes(mut src: impl Buf) -> core::result::Result<Self, Msg> {
                 if src.remaining() < 10 {
-                    Err("buffer too small")
+                    Err(Msg("buffer too small"))
                 } else {
                     let mut data = [0u8; 10];
                     let mut buf = &mut data[..];
@@ -3458,10 +3453,21 @@ mod tests {
         use alloc::collections::BTreeMap;
         struct Handler(BTreeMap<u64, u16>);
 
+        #[derive(Debug)]
+        struct Msg(&'static str);
+
+        impl core::fmt::Display for Msg {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                self.0.fmt(f)
+            }
+        }
+
+        impl core::error::Error for Msg {}
+
         impl BroadcastHandler<ID> for Handler {
             type Key = VersionedKey;
 
-            type Error = &'static str;
+            type Error = Msg;
 
             fn receive_item(
                 &mut self,
@@ -4349,10 +4355,21 @@ mod tests {
         }
     }
 
+    #[derive(Debug)]
+    struct Msg(&'static str);
+
+    impl core::fmt::Display for Msg {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            self.0.fmt(f)
+        }
+    }
+
+    impl core::error::Error for Msg {}
+
     impl BroadcastHandler<ID> for DumbHandler {
         type Key = GrowOnly;
 
-        type Error = &'static str;
+        type Error = Msg;
 
         fn receive_item(
             &mut self,

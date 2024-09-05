@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 use alloc::vec::Vec;
-use core::{cmp::Ordering, fmt};
+use core::cmp::Ordering;
 
 use bytes::BufMut;
 
@@ -21,7 +21,7 @@ pub trait BroadcastHandler<T> {
 
     /// The error type that `receive_item` may emit. Will be wrapped
     /// by [`crate::Error::CustomBroadcast`].
-    type Error: fmt::Debug + fmt::Display + Send + Sync + 'static;
+    type Error: core::error::Error + Send + 'static;
 
     /// Decodes a [`Self::Key`] from a buffer and either discards
     /// it or tells Foca to persist and disseminate it.

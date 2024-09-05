@@ -118,6 +118,8 @@ impl core::fmt::Display for BadCodecError {
     }
 }
 
+impl core::error::Error for BadCodecError {}
+
 impl BadCodec {
     fn encode_header(
         &self,

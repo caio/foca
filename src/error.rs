@@ -3,6 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 use core::fmt;
 
+use alloc::boxed::Box;
+
 #[derive(Debug)]
 /// This type represents all possible errors operating a Foca instance.
 pub enum Error {
@@ -63,17 +65,17 @@ pub enum Error {
     /// codec.
     ///
     /// Might have left Foca in a inconsistent state.
-    Encode(anyhow::Error),
+    Encode(Box<dyn core::error::Error + Send>),
 
     /// Wraps [`crate::Codec`]'s `decode_*` failures.
     ///
     /// Can happen during normal operation when receiving junk data.
-    Decode(anyhow::Error),
+    Decode(Box<dyn core::error::Error + Send>),
 
     /// Wraps [`crate::BroadcastHandler`] failures.
     ///
     /// Doesn't affect Foca's state.
-    CustomBroadcast(anyhow::Error),
+    CustomBroadcast(Box<dyn core::error::Error + Send>),
 
     /// Configuration change not allowed.
     ///
