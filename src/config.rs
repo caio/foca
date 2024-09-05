@@ -317,7 +317,7 @@ impl Config {
         if max_tx <= 1.0 {
             NonZeroU8::new(1).unwrap()
         } else if max_tx >= 255.0 {
-            NonZeroU8::new(core::u8::MAX).unwrap()
+            NonZeroU8::new(u8::MAX).unwrap()
         } else {
             NonZeroU8::new(max_tx as u8).expect("f64 ]1,255[ as u8 is non-zero")
         }

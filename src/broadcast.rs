@@ -195,7 +195,7 @@ where
                 num_taken += 1;
                 remaining -= 1;
 
-                debug_assert!(node.data.len() <= core::u16::MAX as usize);
+                debug_assert!(u16::try_from(node.data.len()).is_ok());
                 buffer.put_u16(node.data.len() as u16);
                 buffer.put_slice(&node.data);
                 node.remaining_tx -= 1;

@@ -199,7 +199,7 @@ where
                 // is needed, so we set it to MAX. Any other value could
                 // cause the shuffle to not happen since members may join
                 // in-between probes
-                self.cursor = core::usize::MAX;
+                self.cursor = usize::MAX;
             } else {
                 self.cursor = pos.saturating_add(1);
             }
