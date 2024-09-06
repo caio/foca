@@ -189,7 +189,7 @@ fn do_the_file_replace_dance<'a>(
 }
 
 #[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<(), anyhow::Error> {
+async fn main() -> Result<(), Box<dyn core::error::Error>> {
     let params = CliParams::new();
 
     // Configured via RUST_LOG environment variable
