@@ -27,7 +27,7 @@ use tokio::{
     time::{sleep_until, Instant},
 };
 
-use foca::{BincodeCodec, Config, Foca, Notification, Timer};
+use foca::{BincodeCodec, Config, Foca, OwnedNotification, Timer};
 
 #[derive(Debug)]
 struct CliParams {
@@ -349,14 +349,14 @@ async fn main() -> Result<(), Box<dyn core::error::Error>> {
             let mut active_list_has_changed = false;
             while let Some(notification) = runtime.to_notify() {
                 match notification {
-                    Notification::MemberUp(_) | Notification::MemberDown(_) => {
+                    OwnedNotification::MemberUp(_) | OwnedNotification::MemberDown(_) => {
                         active_list_has_changed = true;
                         last_change_at = secs_since_epoch();
                     }
-                    Notification::Idle => {
+                    OwnedNotification::Idle => {
                         tracing::info!("cluster empty");
                     }
-                    Notification::Rename(old, new) => {
+                    OwnedNotification::Rename(old, new) => {
                         tracing::info!("member {old:?} is now known as {new:?}");
                     }
 

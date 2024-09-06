@@ -153,7 +153,7 @@ pub use crate::{
     identity::Identity,
     member::{Incarnation, Member, State},
     payload::{Header, Message, ProbeNumber},
-    runtime::{AccumulatingRuntime, Notification, Runtime, Timer, TimerToken},
+    runtime::{AccumulatingRuntime, Notification, OwnedNotification, Runtime, Timer, TimerToken},
 };
 
 #[cfg(feature = "postcard-codec")]
@@ -1269,18 +1269,18 @@ where
                 member_id = tracing::field::debug(&id),
                 "Renamed"
             );
-            runtime.notify(Notification::Rename(old, id.clone()));
+            runtime.notify(Notification::Rename(&old, &id));
         }
 
         if summary.changed_active_set {
             if summary.is_active_now {
                 #[cfg(feature = "tracing")]
                 tracing::debug!(member_id = tracing::field::debug(&id), "Member up");
-                runtime.notify(Notification::MemberUp(id));
+                runtime.notify(Notification::MemberUp(&id));
             } else {
                 #[cfg(feature = "tracing")]
                 tracing::debug!(member_id = tracing::field::debug(&id), "Member down");
-                runtime.notify(Notification::MemberDown(id));
+                runtime.notify(Notification::MemberDown(&id));
             }
         }
 
@@ -1641,7 +1641,7 @@ where
             } else {
                 self.change_identity(new_identity.clone(), &mut runtime)?;
 
-                runtime.notify(Notification::Rejoin(new_identity));
+                runtime.notify(Notification::Rejoin(&new_identity));
 
                 Ok(true)
             }
@@ -1906,7 +1906,7 @@ mod tests {
         struct NoopRuntime;
 
         impl Runtime<ID> for NoopRuntime {
-            fn notify(&mut self, _notification: Notification<ID>) {}
+            fn notify(&mut self, _notification: Notification<'_, ID>) {}
             fn send_to(&mut self, _to: ID, _data: &[u8]) {}
             fn submit_after(&mut self, _event: Timer<ID>, _after: Duration) {}
         }
@@ -1936,7 +1936,7 @@ mod tests {
     macro_rules! expect_notification {
         ($runtime: expr, $notification: expr) => {
             $runtime
-                .take_notification($notification)
+                .take_notification($notification.to_owned())
                 .unwrap_or_else(|| panic!("Notification {:?} not found", $notification));
         };
     }
@@ -1944,7 +1944,9 @@ mod tests {
     macro_rules! reject_notification {
         ($runtime: expr, $notification: expr) => {
             assert!(
-                $runtime.take_notification($notification).is_none(),
+                $runtime
+                    .take_notification($notification.to_owned())
+                    .is_none(),
                 "Unwanted notification {:?} found",
                 $notification
             );
@@ -2005,7 +2007,7 @@ mod tests {
 
         // So we should have gotten a notification about going online
         expect_notification!(runtime, Notification::<ID>::Active);
-        expect_notification!(runtime, Notification::MemberUp(ID::new(1)));
+        expect_notification!(runtime, Notification::MemberUp(&ID::new(1)));
 
         // And a event to trigger a probe should've been
         // scheduled
@@ -2029,7 +2031,7 @@ mod tests {
         assert_eq!(Ok(()), foca_one.handle_data(&encode(data), &mut runtime));
 
         expect_notification!(runtime, Notification::<ID>::Active);
-        expect_notification!(runtime, Notification::MemberUp(ID::new(2)));
+        expect_notification!(runtime, Notification::MemberUp(&ID::new(2)));
         assert_eq!(1, foca_one.num_members());
     }
 
@@ -2127,13 +2129,13 @@ mod tests {
 
         expect_notification!(runtime, Notification::<ID>::Active);
         // We didn't know about any  mentioned in the packet
-        expect_notification!(runtime, Notification::MemberUp(ID::new(2)));
-        expect_notification!(runtime, Notification::MemberUp(ID::new(3)));
-        expect_notification!(runtime, Notification::MemberUp(ID::new(4)));
+        expect_notification!(runtime, Notification::MemberUp(&ID::new(2)));
+        expect_notification!(runtime, Notification::MemberUp(&ID::new(3)));
+        expect_notification!(runtime, Notification::MemberUp(&ID::new(4)));
         // But an update about a Down member that we didn't know
         // about is cluster metadata only and shouldn't trigger
         // a notification
-        reject_notification!(runtime, Notification::MemberDown(ID::new(5)));
+        reject_notification!(runtime, Notification::MemberDown(&ID::new(5)));
         // It should, however, trigger a scheduling for forgetting
         // the member, so that they may rejoin the cluster
         expect_scheduling!(
@@ -2285,7 +2287,7 @@ mod tests {
         // Brand new member. The first in our set, so we should
         // also be notified about going active
         foca.apply(Member::alive(ID::new(2)), &mut runtime)?;
-        expect_notification!(runtime, Notification::MemberUp(ID::new(2)));
+        expect_notification!(runtime, Notification::MemberUp(&ID::new(2)));
         expect_notification!(runtime, Notification::<ID>::Active);
 
         // Updated/stale knowledge about an active member shouldn't
@@ -2294,41 +2296,41 @@ mod tests {
         foca.apply(Member::alive(ID::new(2)), &mut runtime)?;
         foca.apply(Member::suspect(ID::new(2)), &mut runtime)?;
         foca.apply(Member::new(ID::new(2), 10, State::Alive), &mut runtime)?;
-        reject_notification!(runtime, Notification::MemberUp(ID::new(2)));
-        reject_notification!(runtime, Notification::MemberDown(ID::new(2)));
+        reject_notification!(runtime, Notification::MemberUp(&ID::new(2)));
+        reject_notification!(runtime, Notification::MemberDown(&ID::new(2)));
 
         // Another new member
         runtime.clear();
         foca.apply(Member::suspect(ID::new(3)), &mut runtime)?;
-        expect_notification!(runtime, Notification::MemberUp(ID::new(3)));
+        expect_notification!(runtime, Notification::MemberUp(&ID::new(3)));
         reject_notification!(runtime, Notification::<ID>::Active);
 
         // Existing member going down
         runtime.clear();
         foca.apply(Member::down(ID::new(3)), &mut runtime)?;
-        expect_notification!(runtime, Notification::MemberDown(ID::new(3)));
+        expect_notification!(runtime, Notification::MemberDown(&ID::new(3)));
 
         // A stale update should trigger no notification
         runtime.clear();
         foca.apply(Member::down(ID::new(3)), &mut runtime)?;
-        reject_notification!(runtime, Notification::MemberDown(ID::new(3)));
+        reject_notification!(runtime, Notification::MemberDown(&ID::new(3)));
 
         // A new member, but already down, so no notification
         runtime.clear();
         foca.apply(Member::down(ID::new(4)), &mut runtime)?;
-        reject_notification!(runtime, Notification::MemberDown(ID::new(4)));
+        reject_notification!(runtime, Notification::MemberDown(&ID::new(4)));
 
         // Last active member going down, we're going idle
         runtime.clear();
         assert_eq!(1, foca.num_members());
         foca.apply(Member::down(ID::new(2)), &mut runtime)?;
-        expect_notification!(runtime, Notification::MemberDown(ID::new(2)));
+        expect_notification!(runtime, Notification::MemberDown(&ID::new(2)));
         expect_notification!(runtime, Notification::<ID>::Idle);
 
         // New active member, going back to active
         runtime.clear();
         foca.apply(Member::alive(ID::new(5)), &mut runtime)?;
-        expect_notification!(runtime, Notification::MemberUp(ID::new(5)));
+        expect_notification!(runtime, Notification::MemberUp(&ID::new(5)));
         expect_notification!(runtime, Notification::<ID>::Active);
 
         // Now someone declared us (ID=1) down, we should
@@ -2338,15 +2340,15 @@ mod tests {
         expect_notification!(runtime, Notification::<ID>::Defunct);
         // But since we're not part of the member list, there shouldn't
         // be a notification about our id going down
-        reject_notification!(runtime, Notification::MemberDown(ID::new(1)));
+        reject_notification!(runtime, Notification::MemberDown(&ID::new(1)));
 
         // While defunct, we can still maintain members,
         runtime.clear();
         foca.apply(Member::down(ID::new(5)), &mut runtime)?;
-        expect_notification!(runtime, Notification::MemberDown(ID::new(5)));
+        expect_notification!(runtime, Notification::MemberDown(&ID::new(5)));
 
         foca.apply(Member::alive(ID::new(6)), &mut runtime)?;
-        expect_notification!(runtime, Notification::MemberUp(ID::new(6)));
+        expect_notification!(runtime, Notification::MemberUp(&ID::new(6)));
 
         // But until manual intervention happens, we are not active
         reject_notification!(runtime, Notification::<ID>::Active);
@@ -3210,7 +3212,7 @@ mod tests {
         );
         // foca_two hasn't refuted the suspicion, so `foca_one` should
         // have marked it as down
-        expect_notification!(runtime, Notification::MemberDown(two));
+        expect_notification!(runtime, Notification::MemberDown(&two));
         assert_eq!(1, foca_one.num_members());
         assert!(
             foca_one.iter_members().all(|m| m.id() != &two),
@@ -3317,7 +3319,7 @@ mod tests {
         // Change our identity
         let expected_new_id = ID::new_with_bump(1, 1);
         assert_eq!(&expected_new_id, foca.identity());
-        expect_notification!(runtime, Notification::Rejoin(expected_new_id));
+        expect_notification!(runtime, Notification::Rejoin(&expected_new_id));
         reject_notification!(runtime, Notification::<ID>::Defunct);
 
         // And disseminate our new identity to K members
@@ -4226,11 +4228,11 @@ mod tests {
         assert_eq!(Ok(()), foca.apply(Member::alive(renewed), &mut runtime));
         assert_eq!(1, foca.num_members());
         // Should notify the runtime about the change
-        expect_notification!(runtime, Notification::Rename(member, renewed));
+        expect_notification!(runtime, Notification::Rename(&member, &renewed));
         // But no MemberUp notification should be fired, since
         // previous addr was already active
-        reject_notification!(runtime, Notification::MemberUp(member));
-        reject_notification!(runtime, Notification::MemberUp(renewed));
+        reject_notification!(runtime, Notification::MemberUp(&member));
+        reject_notification!(runtime, Notification::MemberUp(&renewed));
 
         runtime.clear();
 
@@ -4239,11 +4241,11 @@ mod tests {
         assert_eq!(Ok(()), foca.apply(Member::down(inactive), &mut runtime));
         assert_eq!(0, foca.num_members());
         // We get notified of the rename
-        expect_notification!(runtime, Notification::Rename(renewed, inactive));
+        expect_notification!(runtime, Notification::Rename(&renewed, &inactive));
         // AND about the member going down with its new identity
-        expect_notification!(runtime, Notification::MemberDown(inactive));
+        expect_notification!(runtime, Notification::MemberDown(&inactive));
         // but nothing about the (now overriden, forgotten) previous one
-        reject_notification!(runtime, Notification::MemberDown(renewed));
+        reject_notification!(runtime, Notification::MemberDown(&renewed));
 
         runtime.clear();
 
@@ -4253,9 +4255,9 @@ mod tests {
         assert_eq!(Ok(()), foca.apply(Member::suspect(active), &mut runtime));
         assert_eq!(1, foca.num_members());
         // Should notify about the rename
-        expect_notification!(runtime, Notification::Rename(inactive, active));
+        expect_notification!(runtime, Notification::Rename(&inactive, &active));
         // And about the member being active
-        expect_notification!(runtime, Notification::MemberUp(active));
+        expect_notification!(runtime, Notification::MemberUp(&active));
 
         runtime.clear();
         // And if it learns about the previous ids again, regardless

@@ -2,10 +2,15 @@
 
 ## UNRELEASED
 
-- **BREAKING**: `foca::Error` now relies on `core::error::Error`
+- **BREAKING**: `Error` now relies on `core::error::Error`
   instead of `anyhow::Error` to wrap Codec and Broadcast errors. The
   dependency has been removed
 - **BREAKING**: MSRV is now 1.81.0
+- **BREAKING**: `Notification` now contains references to identities
+  instead of owned values so that introducing new discriminants is
+  less worrisome for complex types
+- Notifications can be converted to the new `foca::OwnedNotification`,
+  for convenience
 
 ## v0.17.2 - 2024-06-04
 

@@ -27,7 +27,7 @@ where
     /// without having direct access to the running Foca instance.
     ///
     /// Implementations may completely disregard this if desired.
-    fn notify(&mut self, notification: Notification<T>);
+    fn notify(&mut self, notification: Notification<'_, T>);
 
     /// This is how Foca connects to an actual transport.
     ///
@@ -49,7 +49,7 @@ where
     T: Identity,
     R: Runtime<T>,
 {
-    fn notify(&mut self, notification: Notification<T>) {
+    fn notify(&mut self, notification: Notification<'_, T>) {
         R::notify(self, notification);
     }
 
@@ -64,18 +64,17 @@ where
 
 /// A Notification contains information about high-level relevant
 /// state changes in the cluster or Foca itself.
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum Notification<T> {
+#[derive(Debug, PartialEq, Eq)]
+pub enum Notification<'a, T> {
     /// Foca discovered a new active member with identity T.
-    MemberUp(T),
+    MemberUp(&'a T),
     /// A previously active member has been declared down by the cluster.
     ///
     /// If Foca detects a down member but didn't know about its activity
     /// before, this notification will not be emitted.
     ///
     /// Can only happen if `MemberUp(T)` happened before.
-    MemberDown(T),
+    MemberDown(&'a T),
 
     /// Foca has learned that there's a more recent identity with
     /// the same address and chose to use it instead of the previous
@@ -99,7 +98,7 @@ pub enum Notification<T> {
     ///
     /// However, if there's no liveness change (both are active
     /// or both are down), you'll only get the `Rename` notification
-    Rename(T, T),
+    Rename(&'a T, &'a T),
 
     /// Foca's current identity is known by at least one active member
     /// of the cluster.
@@ -124,6 +123,47 @@ pub enum Notification<T> {
     ///
     /// This happens instead of `Defunct` when identities opt-in on
     /// `Identity::renew()` functionality.
+    Rejoin(&'a T),
+}
+
+impl<'a, T> Notification<'a, T>
+where
+    T: Clone,
+{
+    /// Converts self into a [`OwnedNotification`]
+    pub fn to_owned(self) -> OwnedNotification<T> {
+        match self {
+            Notification::MemberUp(m) => OwnedNotification::MemberUp(m.clone()),
+            Notification::MemberDown(m) => OwnedNotification::MemberDown(m.clone()),
+            Notification::Rename(before, after) => {
+                OwnedNotification::Rename(before.clone(), after.clone())
+            }
+            Notification::Active => OwnedNotification::Active,
+            Notification::Idle => OwnedNotification::Idle,
+            Notification::Defunct => OwnedNotification::Defunct,
+            Notification::Rejoin(id) => OwnedNotification::Rejoin(id.clone()),
+        }
+    }
+}
+
+/// An owned `Notification`, for convenience.
+///
+/// See [`Notification`] for details
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OwnedNotification<T> {
+    /// See [`Notification::MemberUp`]
+    MemberUp(T),
+    /// See [`Notification::MemberDown`]
+    MemberDown(T),
+    /// See [`Notification::Rename`]
+    Rename(T, T),
+    /// See [`Notification::Active`]
+    Active,
+    /// See [`Notification::Idle`]
+    Idle,
+    /// See [`Notification::Defunct`]
+    Defunct,
+    /// See [`Notification::Rejoin`]
     Rejoin(T),
 }
 
@@ -239,7 +279,7 @@ pub type TimerToken = u8;
 pub struct AccumulatingRuntime<T> {
     to_send: VecDeque<(T, Bytes)>,
     to_schedule: VecDeque<(Duration, Timer<T>)>,
-    notifications: VecDeque<Notification<T>>,
+    notifications: VecDeque<OwnedNotification<T>>,
     buf: BytesMut,
 }
 
@@ -255,8 +295,8 @@ impl<T> Default for AccumulatingRuntime<T> {
 }
 
 impl<T: Identity> Runtime<T> for AccumulatingRuntime<T> {
-    fn notify(&mut self, notification: Notification<T>) {
-        self.notifications.push_back(notification);
+    fn notify(&mut self, notification: Notification<'_, T>) {
+        self.notifications.push_back(notification.to_owned());
     }
 
     fn send_to(&mut self, to: T, data: &[u8]) {
@@ -266,7 +306,6 @@ impl<T: Identity> Runtime<T> for AccumulatingRuntime<T> {
     }
 
     fn submit_after(&mut self, event: Timer<T>, after: Duration) {
-        // We could spawn+sleep here
         self.to_schedule.push_back((after, event));
     }
 }
@@ -299,7 +338,7 @@ impl<T> AccumulatingRuntime<T> {
     ///
     /// Users are expected to drain it until it yields `None`
     /// after every interaction with `crate::Foca`
-    pub fn to_notify(&mut self) -> Option<Notification<T>> {
+    pub fn to_notify(&mut self) -> Option<OwnedNotification<T>> {
         self.notifications.pop_front()
     }
 
@@ -334,7 +373,10 @@ impl<T: PartialEq> AccumulatingRuntime<T> {
         self.to_send.remove(position).map(|(_, data)| data)
     }
 
-    pub(crate) fn take_notification(&mut self, wanted: Notification<T>) -> Option<Notification<T>> {
+    pub(crate) fn take_notification(
+        &mut self,
+        wanted: OwnedNotification<T>,
+    ) -> Option<OwnedNotification<T>> {
         let position = self
             .notifications
             .iter()
