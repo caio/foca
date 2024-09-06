@@ -6,8 +6,9 @@
 //! with its useful extensions (`SWIM+Inf.+Susp.`).
 //!
 //! * It's a `no_std` + `alloc` crate by default. There's an optional
-//!   `std` feature that simply brings compatibility with some types
-//!   and the `std::error::Error` trait
+//!   `std` feature that simply adds compatibility with socket address
+//!   types and exposes helpers to generate a configuration based on
+//!   cluster size
 //!
 //! * Bring Your Own Everything: Foca doesn't care about anything that
 //!   isn't part of the cluster membership functionality:

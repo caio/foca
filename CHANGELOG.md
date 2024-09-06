@@ -1,5 +1,12 @@
 # Changelog
 
+## UNRELEASED
+
+- **BREAKING**: `foca::Error` now relies on `core::error::Error`
+  instead of `anyhow::Error` to wrap Codec and Broadcast errors. The
+  dependency has been removed
+- **BREAKING**: MSRV is now 1.81.0
+
 ## v0.17.2 - 2024-06-04
 
 - Bugfix: foca could incorrectly attach custom broadcasts to
