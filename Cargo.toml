@@ -25,6 +25,8 @@ std = []
 bincode-codec = ["std", "serde", "bincode", "bytes/std"]
 # Exposes `PostcardCodec`, a no_std-friendly codec
 postcard-codec = ["serde", "postcard"]
+# Enables experimental message-related notifications
+unstable-notifications = []
 
 [dependencies]
 rand = { version = "0.8", default-features = false }

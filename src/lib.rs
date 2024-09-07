@@ -920,6 +920,9 @@ where
             }
         }
 
+        #[cfg(feature = "unstable-notifications")]
+        runtime.notify(Notification::DataReceived(&header));
+
         let Header {
             src,
             src_incarnation,
@@ -1522,6 +1525,8 @@ where
         tracing::trace!("Message sent");
 
         runtime.send_to(dst, &data);
+        #[cfg(feature = "unstable-notifications")]
+        runtime.notify(Notification::DataSent(&header));
 
         // absorb the buf into send_buf so we can reuse its capacity
         debug_assert_eq!(0, self.send_buf.capacity(), "send_buf modified while taken");

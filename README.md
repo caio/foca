@@ -86,6 +86,8 @@ Every feature is optional. The `default` set will always be empty.
   that uses [bincode][] under the hood.
 * `postcard-codec`: Provides `PostcardCodec` a serde-based, `no_std`
   friendly codec that uses [postcard][] under the hood.
+* `unstable-notifications`: Provides new notifications that allow
+  inspecting messages being sent and received
 
 
 # Notes

@@ -11,6 +11,10 @@
   less worrisome for complex types
 - Notifications can be converted to the new `foca::OwnedNotification`,
   for convenience
+- New cargo feature `unstable-notification` which exposes the ability
+  to inspect cluster messages. This was written mostly so that users
+  can hook on the messages that expect a reply and measure round-trip
+  times
 
 ## v0.17.2 - 2024-06-04
 

@@ -6,6 +6,8 @@ use core::{cmp::Ordering, time::Duration};
 
 use bytes::{Bytes, BytesMut};
 
+#[cfg(feature = "unstable-notifications")]
+use crate::Header;
 use crate::{Identity, Incarnation};
 
 /// A Runtime is Foca's gateway to the real world: here is where
@@ -124,6 +126,18 @@ pub enum Notification<'a, T> {
     /// This happens instead of `Defunct` when identities opt-in on
     /// `Identity::renew()` functionality.
     Rejoin(&'a T),
+
+    #[cfg(feature = "unstable-notifications")]
+    /// Foca successfully decoded data received via [`crate::Foca::handle_data`]
+    ///
+    /// See [`Header`]
+    DataReceived(&'a Header<T>),
+
+    #[cfg(feature = "unstable-notifications")]
+    /// Foca sent data to a peer
+    ///
+    /// See [`Header`]
+    DataSent(&'a Header<T>),
 }
 
 impl<'a, T> Notification<'a, T>
@@ -142,6 +156,10 @@ where
             Notification::Idle => OwnedNotification::Idle,
             Notification::Defunct => OwnedNotification::Defunct,
             Notification::Rejoin(id) => OwnedNotification::Rejoin(id.clone()),
+            #[cfg(feature = "unstable-notifications")]
+            Notification::DataReceived(h) => OwnedNotification::DataReceived(h.clone()),
+            #[cfg(feature = "unstable-notifications")]
+            Notification::DataSent(h) => OwnedNotification::DataSent(h.clone()),
         }
     }
 }
@@ -165,6 +183,13 @@ pub enum OwnedNotification<T> {
     Defunct,
     /// See [`Notification::Rejoin`]
     Rejoin(T),
+    #[cfg(feature = "unstable-notifications")]
+    /// See [`Notification::DataReceived`]
+    DataReceived(Header<T>),
+
+    #[cfg(feature = "unstable-notifications")]
+    /// See [`Notification::DataSent`]
+    DataSent(Header<T>),
 }
 
 /// Timer is an event that's scheduled by a [`Runtime`]. You won't need
