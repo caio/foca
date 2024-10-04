@@ -9,6 +9,8 @@
 - **BREAKING**: `Notification` now contains references to identities
   instead of owned values so that introducing new discriminants is
   less worrisome for complex types
+- **BREAKING**: `Foca::apply_many` now lets you decide wether to
+  broadcast the applied updates to other cluster members or not
 - Notifications can be converted to the new `foca::OwnedNotification`,
   for convenience
 - New cargo feature `unstable-notification` which exposes the ability
