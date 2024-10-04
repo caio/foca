@@ -1149,6 +1149,12 @@ where
         }
 
         if let Some(failed) = self.probe.take_failed() {
+            #[cfg(feature = "unstable-notifications")]
+            runtime.notify(Notification::ProbeFailed(
+                self.probe.probe_number(),
+                failed.id(),
+            ));
+
             // Applying here can fail if:
             //
             //  1. The member increased its incarnation since the probe started

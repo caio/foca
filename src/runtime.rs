@@ -7,7 +7,7 @@ use core::{cmp::Ordering, time::Duration};
 use bytes::{Bytes, BytesMut};
 
 #[cfg(feature = "unstable-notifications")]
-use crate::Header;
+use crate::{Header, ProbeNumber};
 use crate::{Identity, Incarnation};
 
 /// A Runtime is Foca's gateway to the real world: here is where
@@ -138,6 +138,13 @@ pub enum Notification<'a, T> {
     ///
     /// See [`Header`]
     DataSent(&'a Header<T>),
+
+    #[cfg(feature = "unstable-notifications")]
+    /// Foca has probed a member and didn't receive a timely reply
+    /// from it nor from any other member asked to indirectly ping it
+    ///
+    /// See [`crate::Message`]
+    ProbeFailed(ProbeNumber, &'a T),
 }
 
 impl<'a, T> Notification<'a, T>
@@ -160,6 +167,8 @@ where
             Notification::DataReceived(h) => OwnedNotification::DataReceived(h.clone()),
             #[cfg(feature = "unstable-notifications")]
             Notification::DataSent(h) => OwnedNotification::DataSent(h.clone()),
+            #[cfg(feature = "unstable-notifications")]
+            Notification::ProbeFailed(n, m) => OwnedNotification::ProbeFailed(n, m.clone()),
         }
     }
 }
@@ -190,6 +199,10 @@ pub enum OwnedNotification<T> {
     #[cfg(feature = "unstable-notifications")]
     /// See [`Notification::DataSent`]
     DataSent(Header<T>),
+
+    #[cfg(feature = "unstable-notifications")]
+    /// See [`Notification::ProbeFailed`]
+    ProbeFailed(ProbeNumber, T),
 }
 
 /// Timer is an event that's scheduled by a [`Runtime`]. You won't need
