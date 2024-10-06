@@ -9,9 +9,11 @@ use std::{
     path::Path,
     str::FromStr,
     sync::Arc,
+    time::Duration,
 };
 
 use bincode::Options;
+use futures_util::{stream::FuturesUnordered, StreamExt};
 use tracing_subscriber::{
     filter::{EnvFilter, LevelFilter},
     fmt,
@@ -323,11 +325,8 @@ async fn main() -> Result<(), Box<dyn core::error::Error>> {
             }
 
             // Then schedule what needs to be scheduled
-            let now = Instant::now();
             while let Some((delay, event)) = runtime.to_schedule() {
-                scheduler
-                    .send((now + delay, event))
-                    .expect("error handling");
+                scheduler.send((delay, event)).expect("error handling");
             }
 
             // And finally react to notifications.
@@ -399,7 +398,7 @@ enum Input<T> {
 
 async fn launch_scheduler(
     timer_tx: mpsc::Sender<Input<ID>>,
-) -> mpsc::UnboundedSender<(Instant, Timer<ID>)> {
+) -> mpsc::UnboundedSender<(Duration, Timer<ID>)> {
     // Unbounded so we don't worry about deadlocks: this is intended to
     // be used alongside the receiving end of `timer_tx`, so we don't
     // want to end up in a situation where we're handling `timer_rx` and
@@ -409,66 +408,34 @@ async fn launch_scheduler(
     // being sure we're deadlock safe.
     // Since the `timer_tx` handler is the only thing that submits events
     // the buffer growth is effectivelly bound
-    let (tx, mut rx) = mpsc::unbounded_channel::<(Instant, Timer<ID>)>();
+    let (tx, mut rx) = mpsc::unbounded_channel::<(Duration, Timer<ID>)>();
 
-    let mut queue = TimerQueue::new();
+    let mut queue = FuturesUnordered::new();
     tokio::spawn(async move {
-        'handler: loop {
-            let now = Instant::now();
-
-            macro_rules! submit_event {
-                ($event:expr) => {
-                    if let Err(err) = timer_tx.send(Input::Event($event)).await {
-                        tracing::error!(
-                            err = tracing::field::debug(err),
-                            "Error submitting timer event. Shutting down timer task"
-                        );
-                        rx.close();
-                        break 'handler;
-                    }
-                };
-                ($when:expr, $event:expr) => {
-                    if $when < now {
-                        submit_event!($event);
-                    } else {
-                        queue.enqueue($when, $event);
-                    }
-                };
-            }
-
-            // XXX Maybe watch for large `now - _ins` deltas to detect runtime lag
-            while let Some((_ins, event)) = queue.pop_next(&now) {
-                submit_event!(event);
-            }
-
-            // If the queue is not empty, we have a deadline: can only
-            // wait until we reach `wake_at`
-            if let Some(wake_at) = queue.next_deadline() {
-                // wait for input OR sleep
-                let sleep_fut = sleep_until(*wake_at);
-                let recv_fut = rx.recv();
-
-                tokio::select! {
-                    _ = sleep_fut => {
-                        // woke up after deadline, time to handle events
-                        continue 'handler;
-                    },
-                    maybe = recv_fut => {
-                        if maybe.is_none() {
-                            // channel closed
-                            break 'handler;
-                        }
-                        let (when, event) = maybe.expect("checked for None already");
-                        submit_event!(when, event);
-                    }
-                };
-            } else {
-                // Otherwise we'll wait until someone submits a new deadline
-                if let Some((when, event)) = rx.recv().await {
-                    submit_event!(when, event);
+        loop {
+            if queue.is_empty() {
+                if let Some((delay, timer)) = rx.recv().await {
+                    queue.push(wait_for_event(delay, timer, timer_tx.clone()));
                 } else {
-                    // channel closed
-                    break 'handler;
+                    rx.close();
+                    return;
+                }
+            }
+
+            tokio::select! {
+                res = queue.next() => {
+                    if let Some(Err(e)) = res {
+                        tracing::error!(?e, "error to send timer, channel is closed");
+                        return;
+                    }
+                }
+                event = rx.recv() => {
+                    if let Some((delay, timer)) = event {
+                        queue.push(wait_for_event(delay, timer, timer_tx.clone()));
+                    } else {
+                        rx.close();
+                        return;
+                    }
                 }
             }
         }
@@ -477,34 +444,13 @@ async fn launch_scheduler(
     tx
 }
 
-// Just a (Instant, Timer) min-heap
-struct TimerQueue(BinaryHeap<Reverse<(Instant, Timer<ID>)>>);
-
-impl TimerQueue {
-    fn new() -> Self {
-        Self(Default::default())
-    }
-
-    fn next_deadline(&self) -> Option<&Instant> {
-        self.0.peek().map(|Reverse((deadline, _))| deadline)
-    }
-
-    fn enqueue(&mut self, deadline: Instant, event: Timer<ID>) {
-        self.0.push(Reverse((deadline, event)));
-    }
-
-    fn pop_next(&mut self, deadline: &Instant) -> Option<(Instant, Timer<ID>)> {
-        if self
-            .0
-            .peek()
-            .map(|Reverse((when, _))| when < deadline)
-            .unwrap_or(false)
-        {
-            self.0.pop().map(|Reverse(inner)| inner)
-        } else {
-            None
-        }
-    }
+async fn wait_for_event(
+    delay: Duration,
+    timer: Timer<ID>,
+    timer_tx: mpsc::Sender<Input<ID>>,
+) -> Result<(), mpsc::error::SendError<Input<ID>>> {
+    tokio::time::sleep(delay).await;
+    timer_tx.send(Input::Event(timer)).await
 }
 
 fn secs_since_epoch() -> u64 {
