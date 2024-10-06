@@ -493,11 +493,11 @@ where
     }
 
     fn announce_to_down(&mut self, num_members: usize, mut runtime: impl Runtime<T>) -> Result<()> {
-        self.updates_buf.clear();
+        self.choice_buf.clear();
         self.members
-            .choose_down_members(num_members, &mut self.updates_buf, &mut self.rng);
+            .choose_down_members(num_members, &mut self.choice_buf, &mut self.rng);
 
-        while let Some(chosen) = self.updates_buf.pop() {
+        while let Some(chosen) = self.choice_buf.pop() {
             self.send_message(chosen.into_identity(), Message::Announce, &mut runtime)?;
         }
 
