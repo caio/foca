@@ -1,6 +1,6 @@
 # Changelog
 
-## UNRELEASED
+## v0.18.0 - 2024-10-12
 
 - **BREAKING**: `Error` now relies on `core::error::Error`
   instead of `anyhow::Error` to wrap Codec and Broadcast errors. The
@@ -17,6 +17,9 @@
   to inspect cluster messages. This was written mostly so that users
   can hook on the messages that expect a reply and measure round-trip
   times
+- Reworked the foca_insecure_udp_agent example schedules to make it
+  easier to read
+  See: https://github.com/caio/foca/pull/36
 
 ## v0.17.2 - 2024-06-04
 
