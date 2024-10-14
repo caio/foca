@@ -543,15 +543,15 @@ where
             return Ok(());
         }
 
-        self.updates_buf.clear();
+        self.choice_buf.clear();
         self.members.choose_active_members(
             self.config.num_indirect_probes.get(),
-            &mut self.updates_buf,
+            &mut self.choice_buf,
             &mut self.rng,
             |member| self.broadcast_handler.should_add_broadcast_data(member),
         );
 
-        while let Some(chosen) = self.updates_buf.pop() {
+        while let Some(chosen) = self.choice_buf.pop() {
             self.send_message(chosen.into_identity(), Message::Broadcast, &mut runtime)?;
 
             // Crafting the message above left the backlog empty,
@@ -668,10 +668,10 @@ where
                     return Ok(());
                 }
 
-                self.updates_buf.clear();
+                self.choice_buf.clear();
                 self.members.choose_active_members(
                     self.config.num_indirect_probes.get(),
-                    &mut self.updates_buf,
+                    &mut self.choice_buf,
                     &mut self.rng,
                     |candidate| candidate != &probed_id,
                 );
@@ -682,7 +682,7 @@ where
                     "Member didn't respond to ping in time, starting indirect probe cycle"
                 );
 
-                while let Some(chosen) = self.updates_buf.pop() {
+                while let Some(chosen) = self.choice_buf.pop() {
                     let indirect = chosen.into_identity();
 
                     self.probe.expect_indirect_ack(indirect.clone());
@@ -1491,18 +1491,18 @@ where
             let mut num_items = 0;
 
             if only_active_members {
-                self.updates_buf.clear();
+                self.choice_buf.clear();
                 self.members.choose_active_members(
                     // Done in order to prevent copying and sorting a large
                     // set of members just to not use them at all because
                     // they don't fit the remaining buffer
                     self.estimate_feed_capacity(buf.remaining_mut()),
-                    &mut self.updates_buf,
+                    &mut self.choice_buf,
                     &mut self.rng,
                     |member| member != &dst,
                 );
 
-                while let Some(chosen) = self.updates_buf.pop() {
+                while let Some(chosen) = self.choice_buf.pop() {
                     let pos = buf.get_ref().len();
                     if let Err(_ignored) = self.codec.encode_member(&chosen, &mut buf) {
                         // encoding the member might have advanced the cursor
