@@ -1743,7 +1743,7 @@ where
     B: BroadcastHandler<T>,
     B::Error: core::error::Error + Send,
 {
-    pub fn incarnation(&self) -> Incarnation {
+    pub(crate) fn incarnation(&self) -> Incarnation {
         self.incarnation
     }
 
@@ -1751,7 +1751,7 @@ where
         &self.probe
     }
 
-    pub fn timer_token(&self) -> TimerToken {
+    pub(crate) fn timer_token(&self) -> TimerToken {
         self.timer_token
     }
 
