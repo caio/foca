@@ -33,7 +33,7 @@ rand = { version = "0.9", default-features = false }
 bytes = { version = "1", default-features = false }
 
 serde = { version = "1", default-features = false, features = ["derive", "alloc"], optional = true }
-bincode = { version = "1", default-features = false, optional = true }
+bincode = { version = "2", default-features = false, features = ["std", "serde"], optional = true }
 postcard = { version = "1.0", default-features = false, optional = true }
 tracing = { version = "0.1", default-features = false, features = ["attributes"], optional = true }
 

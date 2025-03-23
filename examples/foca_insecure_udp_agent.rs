@@ -11,7 +11,6 @@ use std::{
     sync::Arc,
 };
 
-use bincode::Options;
 use tracing_subscriber::{
     filter::{EnvFilter, LevelFilter},
     fmt,
@@ -222,7 +221,7 @@ async fn main() -> Result<(), Box<dyn core::error::Error>> {
         identity,
         config,
         rng,
-        BincodeCodec(bincode::DefaultOptions::new()),
+        BincodeCodec(bincode::config::standard()),
         Handler::new(),
     );
     let socket = Arc::new(UdpSocket::bind(bind_addr).await?);
@@ -288,9 +287,12 @@ async fn main() -> Result<(), Box<dyn core::error::Error>> {
                         version: last_change_at,
                     };
                     ser_buf.clear();
-                    bincode::DefaultOptions::new()
-                        .serialize_into(&mut ser_buf, &Broadcast { key, msg })
-                        .expect("ser error handling");
+                    bincode::serde::encode_into_std_write(
+                        Broadcast { key, msg },
+                        &mut ser_buf,
+                        bincode::config::standard(),
+                    )
+                    .expect("ser error handling");
 
                     // Notice that we're unconditionally adding a custom
                     // broadcast to the backlog, so there will always be some
@@ -542,14 +544,12 @@ impl foca::Invalidates for BroadcastKey {
 
 struct Handler {
     messages: HashMap<SocketAddr, (u64, String)>,
-    opts: bincode::DefaultOptions,
 }
 
 impl Handler {
     fn new() -> Self {
         Self {
             messages: Default::default(),
-            opts: bincode::DefaultOptions::new(),
         }
     }
 }
@@ -581,10 +581,9 @@ impl foca::BroadcastHandler<ID> for Handler {
         // directly. Ideally, one would first decode just the key
         // so that you can quickly verify if there's a need to
         // decode the rest of the payload.
-        let Broadcast { key, msg }: Broadcast = self
-            .opts
-            .deserialize_from(&mut reader)
-            .map_err(|err| Msg(format!("bad broadcast: {err}")))?;
+        let Broadcast { key, msg }: Broadcast =
+            bincode::serde::decode_from_std_read(&mut reader, bincode::config::standard())
+                .map_err(|err| Msg(format!("bad broadcast: {err}")))?;
 
         let is_new_message = self
             .messages
