@@ -212,7 +212,7 @@ async fn main() -> Result<(), Box<dyn core::error::Error>> {
         filename,
     } = params;
 
-    let rng = StdRng::from_entropy();
+    let rng = StdRng::from_os_rng();
     let config = Config::new_lan(std::num::NonZeroU32::new(10).unwrap());
 
     let buf_len = config.max_packet_size.get();

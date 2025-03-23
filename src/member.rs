@@ -232,7 +232,7 @@ where
                 num_chosen += 1;
                 output.push(member.clone());
             } else {
-                let replace_at = rng.gen_range(0..num_seen);
+                let replace_at = rng.random_range(0..num_seen);
                 if replace_at < wanted {
                     output[replace_at] = member.clone();
                 }
