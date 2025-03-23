@@ -47,7 +47,7 @@ pub trait Codec<T> {
     fn decode_member(&mut self, buf: impl Buf) -> Result<Member<T>, Self::Error>;
 }
 
-impl<'a, C, T> Codec<T> for &'a mut C
+impl<C, T> Codec<T> for &mut C
 where
     C: Codec<T>,
 {

@@ -147,7 +147,7 @@ pub enum Notification<'a, T> {
     ProbeFailed(ProbeNumber, &'a T),
 }
 
-impl<'a, T> Notification<'a, T>
+impl<T> Notification<'_, T>
 where
     T: Clone,
 {

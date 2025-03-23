@@ -98,7 +98,7 @@ pub trait Invalidates {
     fn invalidates(&self, other: &Self) -> bool;
 }
 
-impl<'a> Invalidates for &'a [u8] {
+impl Invalidates for &[u8] {
     fn invalidates(&self, other: &Self) -> bool {
         self.eq(other)
     }
