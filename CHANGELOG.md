@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.19.0 - 2025-03-24
+
+- `rand` dependency updated to 0.9
+- `bincode-codec` feature now depends on bincode 2, but still
+   requires serde and std
+
 ## v0.18.0 - 2024-10-12
 
 - **BREAKING**: `Error` now relies on `core::error::Error`
