@@ -142,6 +142,23 @@ pub enum Message<T> {
     TurnUndead,
 }
 
+impl<T> Message<T> {
+    pub(crate) fn allow_custom_broadcasts(&self) -> bool {
+        !matches!(self, Message::Announce | Message::TurnUndead)
+    }
+
+    pub(crate) fn needs_piggyback(&self) -> bool {
+        !matches!(
+            self,
+            Message::Announce | Message::TurnUndead | Message::Broadcast
+        )
+    }
+
+    pub(crate) fn piggyback_only_active(&self) -> bool {
+        matches!(self, Message::Feed)
+    }
+}
+
 /// `ProbeNumber` is simply a bookkeeping mechanism to try and prevent
 /// incorrect sequencing of protocol messages.
 ///

@@ -1467,20 +1467,10 @@ where
             return Err(err);
         }
 
-        let (needs_piggyback, only_active_members) = match header.message {
-            // Announce/TurnUndead packets contain nothing but the header
-            // Broadcast packets stuffs only custom broadcasts
-            Message::Announce | Message::TurnUndead | Message::Broadcast => (false, false),
-            // Feed packets stuff active members at the tail
-            Message::Feed => (true, true),
-            // Every other message stuffs cluster updates
-            _ => (true, false),
-        };
-
         // If we're piggybacking data, we need at least 2 extra bytes
         // so that we can also encode the number of items we're stuffing
         // into this buffer
-        if needs_piggyback && buf.remaining_mut() > 2 {
+        if header.message.needs_piggyback() && buf.remaining_mut() > 2 {
             // Where we'll write the total number of items
             let tally_position = buf.get_ref().len();
             // We leave a zero here so that the buffer advances, then
@@ -1490,7 +1480,7 @@ where
 
             let mut num_items = 0;
 
-            if only_active_members {
+            if header.message.piggyback_only_active() {
                 self.choice_buf.clear();
                 self.members.choose_active_members(
                     // Done in order to prevent copying and sorting a large
@@ -1527,11 +1517,7 @@ where
         }
 
         let add_custom_broadcast = buf.has_remaining_mut()
-            // Every message but Announce includes custom broadcasts by
-            // default
-            // NEEDSWORK: this + piggyback logic should be put in the type so
-            //            it doesn't go out of sync
-            && !matches!(header.message, Message::Announce|Message::TurnUndead)
+            && header.message.allow_custom_broadcasts()
             // Unless the broadcast handler says no
             && self.broadcast_handler.should_add_broadcast_data(&dst);
 
