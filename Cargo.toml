@@ -49,6 +49,6 @@ required-features = ["std", "tracing", "bincode-codec"]
 clap = { version = "2", default-features = false }
 tokio = { version = "1", default-features = false, features = ["rt", "macros", "sync", "time", "net"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-uuid = { version = "0.8", features = ["v4", "serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
 rand = { version = "0.9", features = ["small_rng"] }
 serde = { version = "1", features = ["derive"] }
