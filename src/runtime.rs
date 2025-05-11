@@ -305,7 +305,7 @@ pub type TimerToken = u8;
 /// A `Runtime` implementation that's good enough for simple use-cases.
 ///
 /// It accumulates all events that happen during an interaction with
-/// `crate::Foca` and users must drain those and react accordingly.
+/// [`crate::Foca`] and users must drain those and react accordingly.
 ///
 /// Better runtimes would react directly to the events, intead of
 /// needlessly storing the events in a queue.
@@ -349,7 +349,7 @@ impl<T: Identity> Runtime<T> for AccumulatingRuntime<T> {
 }
 
 impl<T> AccumulatingRuntime<T> {
-    /// Create a new `AccumulatingRuntime`
+    /// Create a new [`AccumulatingRuntime`]
     pub fn new() -> Self {
         Self::default()
     }
@@ -358,7 +358,7 @@ impl<T> AccumulatingRuntime<T> {
     /// order they've happened.
     ///
     /// Users are expected to drain it until it yields `None`
-    /// after every interaction with `crate::Foca`
+    /// after every interaction with [`crate::Foca`]
     pub fn to_send(&mut self) -> Option<(T, Bytes)> {
         self.to_send.pop_front()
     }
@@ -367,7 +367,7 @@ impl<T> AccumulatingRuntime<T> {
     /// must be given back to the foca instance that produced it
     ///
     /// Users are expected to drain it until it yields `None`
-    /// after every interaction with `crate::Foca`
+    /// after every interaction with [`crate::Foca`]
     pub fn to_schedule(&mut self) -> Option<(Duration, Timer<T>)> {
         self.to_schedule.pop_front()
     }
@@ -375,7 +375,7 @@ impl<T> AccumulatingRuntime<T> {
     /// Yields event notifications in the order they've happened
     ///
     /// Users are expected to drain it until it yields `None`
-    /// after every interaction with `crate::Foca`
+    /// after every interaction with [`crate::Foca`]
     pub fn to_notify(&mut self) -> Option<OwnedNotification<T>> {
         self.notifications.pop_front()
     }
@@ -383,7 +383,7 @@ impl<T> AccumulatingRuntime<T> {
     /// Returns how many unhandled events are left in this runtime
     ///
     /// Should be brought down to zero after every interaction with
-    /// `crate::Foca`
+    /// [`crate::Foca`]
     pub fn backlog(&self) -> usize {
         self.to_send.len() + self.to_schedule.len() + self.notifications.len()
     }
