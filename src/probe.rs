@@ -37,7 +37,7 @@ impl<T: Clone + PartialEq> Probe<T> {
         self.probe_number
     }
 
-    pub(crate) fn probe_number(&self) -> ProbeNumber {
+    pub(crate) const fn probe_number(&self) -> ProbeNumber {
         self.probe_number
     }
 
@@ -54,7 +54,7 @@ impl<T: Clone + PartialEq> Probe<T> {
         self.reached_indirect_probe_stage = true;
     }
 
-    pub(crate) fn validate(&self) -> bool {
+    pub(crate) const fn validate(&self) -> bool {
         // A probe that hasn't been started is
         // valid
         self.direct.is_none()
@@ -80,7 +80,7 @@ impl<T: Clone + PartialEq> Probe<T> {
         self.direct.as_ref().is_some_and(|probed| probed.id() == id)
     }
 
-    pub(crate) fn succeeded(&self) -> bool {
+    pub(crate) const fn succeeded(&self) -> bool {
         self.direct_ack_ok || self.indirect_ack_count > 0
     }
 

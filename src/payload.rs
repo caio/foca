@@ -143,18 +143,18 @@ pub enum Message<T> {
 }
 
 impl<T> Message<T> {
-    pub(crate) fn allow_custom_broadcasts(&self) -> bool {
+    pub(crate) const fn allow_custom_broadcasts(&self) -> bool {
         !matches!(self, Message::Announce | Message::TurnUndead)
     }
 
-    pub(crate) fn needs_piggyback(&self) -> bool {
+    pub(crate) const fn needs_piggyback(&self) -> bool {
         !matches!(
             self,
             Message::Announce | Message::TurnUndead | Message::Broadcast
         )
     }
 
-    pub(crate) fn piggyback_only_active(&self) -> bool {
+    pub(crate) const fn piggyback_only_active(&self) -> bool {
         matches!(self, Message::Feed)
     }
 }

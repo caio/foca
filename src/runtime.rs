@@ -260,7 +260,7 @@ pub enum Timer<T> {
 }
 
 impl<T> Timer<T> {
-    fn seq(&self) -> u8 {
+    const fn seq(&self) -> u8 {
         match self {
             Timer::SendIndirectProbe {
                 probed_id: _,

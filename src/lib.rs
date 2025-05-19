@@ -86,6 +86,7 @@
     clippy::match_wild_err_arm,
     clippy::match_wildcard_for_single_variants,
     clippy::mem_forget,
+    clippy::missing_const_for_fn,
     clippy::missing_enforced_import_renames,
     clippy::mut_mut,
     clippy::mutex_integer,
@@ -275,7 +276,7 @@ where
     }
 
     /// Getter for the current identity.
-    pub fn identity(&self) -> &T {
+    pub const fn identity(&self) -> &T {
         &self.identity
     }
 
@@ -355,7 +356,7 @@ where
     ///
     /// May only be used as a bound for [`Foca::iter_members`] if no
     /// Foca method that takes `&mut self` is called in-between.
-    pub fn num_members(&self) -> usize {
+    pub const fn num_members(&self) -> usize {
         self.members.num_active()
     }
 

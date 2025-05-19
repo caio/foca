@@ -56,7 +56,7 @@ impl<T> Member<T> {
     ///
     /// `id` is an identity used to uniquely identify an individual
     /// cluster member (say, a primary key).
-    pub fn new(id: T, incarnation: Incarnation, state: State) -> Self {
+    pub const fn new(id: T, incarnation: Incarnation, state: State) -> Self {
         Self {
             id,
             incarnation,
@@ -79,21 +79,21 @@ impl<T> Member<T> {
     }
 
     /// Getter for the member's Incarnation
-    pub fn incarnation(&self) -> Incarnation {
+    pub const fn incarnation(&self) -> Incarnation {
         self.incarnation
     }
 
     /// Getter for the member's State
-    pub fn state(&self) -> State {
+    pub const fn state(&self) -> State {
         self.state
     }
 
     /// Getter for the member's identity
-    pub fn id(&self) -> &T {
+    pub const fn id(&self) -> &T {
         &self.id
     }
 
-    pub(crate) fn is_active(&self) -> bool {
+    pub(crate) const fn is_active(&self) -> bool {
         match self.state {
             State::Alive | State::Suspect => true,
             State::Down => false,
@@ -110,7 +110,7 @@ impl<T> Member<T> {
         }
     }
 
-    fn can_change(&self, other_incarnation: Incarnation, other: State) -> bool {
+    const fn can_change(&self, other_incarnation: Incarnation, other: State) -> bool {
         // This implements the order of preference of the Suspicion subprotocol
         // outlined on section 4.2 of the paper.
         match self.state {
@@ -149,7 +149,7 @@ impl<T> Members<T>
 where
     T: PartialEq + Clone + crate::Identity,
 {
-    pub(crate) fn num_active(&self) -> usize {
+    pub(crate) const fn num_active(&self) -> usize {
         self.num_active
     }
 
