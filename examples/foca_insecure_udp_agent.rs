@@ -169,16 +169,16 @@ fn do_the_file_replace_dance<'a>(
 ) -> std::io::Result<()> {
     // Shirley, there's a more hygienic way of doing all this
 
-    let tmp_fname = format!("{}.new", fname);
+    let tmp_fname = format!("{fname}.new");
 
     let mut tmp = File::create(&tmp_fname)?;
     for addr in addrs {
-        writeln!(&mut tmp, "{}", addr)?;
+        writeln!(&mut tmp, "{addr}")?;
     }
 
     let dst = Path::new(fname);
     if dst.exists() {
-        let old_fname = format!("{}.old", fname);
+        let old_fname = format!("{fname}.old");
         std::fs::rename(dst, Path::new(&old_fname))?;
     }
 
