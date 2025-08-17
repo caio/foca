@@ -45,7 +45,7 @@ pub trait BroadcastHandler<T> {
     /// `Some`, otherwise the operation is stale, so you yield `None`.
     ///
     /// The `data` parameter is the exact data provided to
-    /// `crate::Foca::add_broadcast`. When Foca receives N custom
+    /// [`crate::Foca::add_broadcast`]. When Foca receives N custom
     /// broadcasts at once, this gets called N times.
     fn receive_item(
         &mut self,
