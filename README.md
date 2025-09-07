@@ -1,3 +1,35 @@
+
+<div align="right">
+  <details>
+    <summary >🌐 Language</summary>
+    <div>
+      <div align="center">
+        <a href="https://openaitx.github.io/view.html?user=caio&project=foca&lang=en">English</a>
+        | <a href="https://openaitx.github.io/view.html?user=caio&project=foca&lang=zh-CN">简体中文</a>
+        | <a href="https://openaitx.github.io/view.html?user=caio&project=foca&lang=zh-TW">繁體中文</a>
+        | <a href="https://openaitx.github.io/view.html?user=caio&project=foca&lang=ja">日本語</a>
+        | <a href="https://openaitx.github.io/view.html?user=caio&project=foca&lang=ko">한국어</a>
+        | <a href="https://openaitx.github.io/view.html?user=caio&project=foca&lang=hi">हिन्दी</a>
+        | <a href="https://openaitx.github.io/view.html?user=caio&project=foca&lang=th">ไทย</a>
+        | <a href="https://openaitx.github.io/view.html?user=caio&project=foca&lang=fr">Français</a>
+        | <a href="https://openaitx.github.io/view.html?user=caio&project=foca&lang=de">Deutsch</a>
+        | <a href="https://openaitx.github.io/view.html?user=caio&project=foca&lang=es">Español</a>
+        | <a href="https://openaitx.github.io/view.html?user=caio&project=foca&lang=it">Italiano</a>
+        | <a href="https://openaitx.github.io/view.html?user=caio&project=foca&lang=ru">Русский</a>
+        | <a href="https://openaitx.github.io/view.html?user=caio&project=foca&lang=pt">Português</a>
+        | <a href="https://openaitx.github.io/view.html?user=caio&project=foca&lang=nl">Nederlands</a>
+        | <a href="https://openaitx.github.io/view.html?user=caio&project=foca&lang=pl">Polski</a>
+        | <a href="https://openaitx.github.io/view.html?user=caio&project=foca&lang=ar">العربية</a>
+        | <a href="https://openaitx.github.io/view.html?user=caio&project=foca&lang=fa">فارسی</a>
+        | <a href="https://openaitx.github.io/view.html?user=caio&project=foca&lang=tr">Türkçe</a>
+        | <a href="https://openaitx.github.io/view.html?user=caio&project=foca&lang=vi">Tiếng Việt</a>
+        | <a href="https://openaitx.github.io/view.html?user=caio&project=foca&lang=id">Bahasa Indonesia</a>
+        | <a href="https://openaitx.github.io/view.html?user=caio&project=foca&lang=as">অসমীয়া</
+      </div>
+    </div>
+  </details>
+</div>
+
 # Foca: Cluster membership discovery on your terms
 
 Foca is a building block for your gossip-based cluster discovery. It's
