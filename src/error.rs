@@ -65,17 +65,17 @@ pub enum Error {
     /// codec.
     ///
     /// Might have left Foca in a inconsistent state.
-    Encode(Box<dyn core::error::Error + Send>),
+    Encode(Box<dyn core::error::Error + Send + Sync>),
 
     /// Wraps [`crate::Codec`]'s `decode_*` failures.
     ///
     /// Can happen during normal operation when receiving junk data.
-    Decode(Box<dyn core::error::Error + Send>),
+    Decode(Box<dyn core::error::Error + Send + Sync>),
 
     /// Wraps [`crate::BroadcastHandler`] failures.
     ///
     /// Doesn't affect Foca's state.
-    CustomBroadcast(Box<dyn core::error::Error + Send>),
+    CustomBroadcast(Box<dyn core::error::Error + Send + Sync>),
 
     /// Configuration change not allowed.
     ///

@@ -21,7 +21,7 @@ pub trait BroadcastHandler<T> {
 
     /// The error type that `receive_item` may emit. Will be wrapped
     /// by [`crate::Error::CustomBroadcast`].
-    type Error: core::error::Error + Send + 'static;
+    type Error: core::error::Error + Send + Sync + 'static;
 
     /// Decodes a [`Self::Key`] from a buffer and either discards
     /// it or tells Foca to persist and disseminate it.

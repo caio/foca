@@ -1,5 +1,9 @@
 # Changelog
 
+## UNRELEASED
+
+- Foca errors are now Sync
+
 ## v0.19.0 - 2025-03-24
 
 - `rand` dependency updated to 0.9
