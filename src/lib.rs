@@ -992,7 +992,7 @@ where
         debug_assert_eq!(
             0,
             self.updates_buf.capacity(),
-            "member_buf modified while taken"
+            "updates_buf modified while taken"
         );
         self.updates_buf = updates;
 
