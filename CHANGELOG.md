@@ -1,8 +1,8 @@
 # Changelog
 
-## UNRELEASED
+## v1.0.0
 
-- Foca errors are now Sync
+- Foca errors are now Send+Sync
 
 ## v0.19.0 - 2025-03-24
 

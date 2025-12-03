@@ -160,3 +160,13 @@ impl fmt::Display for Error {
 }
 
 impl core::error::Error for Error {}
+
+#[cfg(test)]
+mod tests {
+    fn ensure_send_sync<T: Send + Sync>(_val: T) {}
+
+    #[test]
+    fn errors_are_sync() {
+        ensure_send_sync(super::Error::InvalidConfig);
+    }
+}
