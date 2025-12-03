@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.0.0
+## v1.0.0 - 2025-12-03
 
 - Foca errors are now Send+Sync
 
