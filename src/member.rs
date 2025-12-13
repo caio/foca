@@ -292,49 +292,46 @@ where
             .iter_mut()
             .find(|member| member.id.addr() == update.id().addr())
         {
-            // if there's a conflict and the update wins, the member
-            // state is fully replaced
-            let mut force_apply = false;
-            if known_member.id != update.id {
-                // If the update wins the conflict, the full member
-                // state is replaced (it's essentially a rejoin)
-                if known_member.id.win_addr_conflict(&update.id) {
-                    // update lost conflict, it's junk
-                    return Some(ApplySummary {
-                        is_active_now: known_member.is_active(),
-                        apply_successful: false,
-                        changed_active_set: false,
-                        conflict: ConflictResult::Lost,
-                    });
-                }
-                force_apply = true;
-            }
+            let id_conflict = known_member.id != update.id;
 
-            if !condition(known_member) {
-                let conflict = if force_apply {
-                    ConflictResult::FailedCondition
-                } else {
-                    ConflictResult::NoConflict
-                };
-
+            // If the update wins the conflict, the full member
+            // state is replaced (it's essentially a rejoin)
+            // If it doesn't, it gets discarded
+            if id_conflict && known_member.id.win_addr_conflict(&update.id) {
                 return Some(ApplySummary {
                     is_active_now: known_member.is_active(),
                     apply_successful: false,
                     changed_active_set: false,
-                    conflict,
+                    conflict: ConflictResult::Lost,
+                });
+            }
+
+            if !condition(known_member) {
+                return Some(ApplySummary {
+                    is_active_now: known_member.is_active(),
+                    apply_successful: false,
+                    changed_active_set: false,
+                    conflict: if id_conflict {
+                        ConflictResult::FailedCondition
+                    } else {
+                        ConflictResult::NoConflict
+                    },
                 });
             }
             let was_active = known_member.is_active();
-            let mut conflict = ConflictResult::NoConflict;
-            let apply_successful = if force_apply {
+
+            let (apply_successful, conflict) = if id_conflict {
                 core::mem::swap(&mut known_member.id, &mut update.id);
-                conflict = ConflictResult::Replaced(update.id);
                 known_member.state = update.state;
                 known_member.incarnation = update.incarnation;
-                true
+                (true, ConflictResult::Replaced(update.id))
             } else {
-                known_member.change_state(update.incarnation, update.state)
+                (
+                    known_member.change_state(update.incarnation, update.state),
+                    ConflictResult::NoConflict,
+                )
             };
+
             let is_active_now = known_member.is_active();
             let changed_active_set = is_active_now != was_active;
 
