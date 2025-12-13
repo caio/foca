@@ -262,20 +262,20 @@ pub enum Timer<T> {
 impl<T> Timer<T> {
     const fn seq(&self) -> u8 {
         match self {
-            Timer::SendIndirectProbe {
+            Self::SendIndirectProbe {
                 probed_id: _,
                 token: _,
             } => 0,
-            Timer::ProbeRandomMember(_) => 1,
-            Timer::ChangeSuspectToDown {
+            Self::ProbeRandomMember(_) => 1,
+            Self::ChangeSuspectToDown {
                 member_id: _,
                 incarnation: _,
                 token: _,
             } => 2,
-            Timer::PeriodicAnnounce(_) => 3,
-            Timer::PeriodicGossip(_) => 4,
-            Timer::RemoveDown(_) => 5,
-            Timer::PeriodicAnnounceDown(_) => 6,
+            Self::PeriodicAnnounce(_) => 3,
+            Self::PeriodicGossip(_) => 4,
+            Self::RemoveDown(_) => 5,
+            Self::PeriodicAnnounceDown(_) => 6,
         }
     }
 }

@@ -92,37 +92,37 @@ impl PartialEq for Error {
         match (self, other) {
             // Wrapped errors have to allocate to compare :(
             // But PartialEq on an error type is mostly useful for tests
-            (Error::Encode(a), Error::Encode(b)) => a.to_string().eq(&b.to_string()),
-            (Error::Decode(a), Error::Decode(b)) => a.to_string().eq(&b.to_string()),
-            (Error::CustomBroadcast(a), Error::CustomBroadcast(b)) => {
+            (Self::Encode(a), Self::Encode(b)) => a.to_string().eq(&b.to_string()),
+            (Self::Decode(a), Self::Decode(b)) => a.to_string().eq(&b.to_string()),
+            (Self::CustomBroadcast(a), Self::CustomBroadcast(b)) => {
                 a.to_string().eq(&b.to_string())
             }
 
-            (Error::DataTooBig, Error::DataTooBig) => true,
-            (Error::NotConnected, Error::NotConnected) => true,
-            (Error::NotUndead, Error::NotUndead) => true,
-            (Error::SameIdentity, Error::SameIdentity) => true,
-            (Error::IncompleteProbeCycle, Error::IncompleteProbeCycle) => true,
-            (Error::DataFromOurselves, Error::DataFromOurselves) => true,
-            (Error::IndirectForOurselves, Error::IndirectForOurselves) => true,
-            (Error::MalformedPacket, Error::MalformedPacket) => true,
-            (Error::InvalidConfig, Error::InvalidConfig) => true,
+            (Self::DataTooBig, Self::DataTooBig) => true,
+            (Self::NotConnected, Self::NotConnected) => true,
+            (Self::NotUndead, Self::NotUndead) => true,
+            (Self::SameIdentity, Self::SameIdentity) => true,
+            (Self::IncompleteProbeCycle, Self::IncompleteProbeCycle) => true,
+            (Self::DataFromOurselves, Self::DataFromOurselves) => true,
+            (Self::IndirectForOurselves, Self::IndirectForOurselves) => true,
+            (Self::MalformedPacket, Self::MalformedPacket) => true,
+            (Self::InvalidConfig, Self::InvalidConfig) => true,
 
             // Instead of a catch-all here, we explicitly enumerate our variants
             // so that when/if new errors are added we don't silently introduce
             // a bug
-            (Error::Encode(_), _) => false,
-            (Error::Decode(_), _) => false,
-            (Error::CustomBroadcast(_), _) => false,
-            (Error::DataTooBig, _) => false,
-            (Error::NotConnected, _) => false,
-            (Error::NotUndead, _) => false,
-            (Error::SameIdentity, _) => false,
-            (Error::IncompleteProbeCycle, _) => false,
-            (Error::DataFromOurselves, _) => false,
-            (Error::IndirectForOurselves, _) => false,
-            (Error::MalformedPacket, _) => false,
-            (Error::InvalidConfig, _) => false,
+            (Self::Encode(_), _) => false,
+            (Self::Decode(_), _) => false,
+            (Self::CustomBroadcast(_), _) => false,
+            (Self::DataTooBig, _) => false,
+            (Self::NotConnected, _) => false,
+            (Self::NotUndead, _) => false,
+            (Self::SameIdentity, _) => false,
+            (Self::IncompleteProbeCycle, _) => false,
+            (Self::DataFromOurselves, _) => false,
+            (Self::IndirectForOurselves, _) => false,
+            (Self::MalformedPacket, _) => false,
+            (Self::InvalidConfig, _) => false,
         }
     }
 }
@@ -131,30 +131,30 @@ impl fmt::Display for Error {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         #[allow(clippy::match_same_arms)]
         match self {
-            Error::DataTooBig => {
+            Self::DataTooBig => {
                 formatter.write_str("Received data larger than maximum configured limit")
             }
-            Error::NotUndead => formatter.write_str("Useless attempt to reuse a functioning Foca"),
-            Error::SameIdentity => {
+            Self::NotUndead => formatter.write_str("Useless attempt to reuse a functioning Foca"),
+            Self::SameIdentity => {
                 formatter.write_str("New identity is the same as the current one")
             }
-            Error::NotConnected => formatter.write_str("BUG! Expected to be connected, but wasn't"),
-            Error::IncompleteProbeCycle => {
+            Self::NotConnected => formatter.write_str("BUG! Expected to be connected, but wasn't"),
+            Self::IncompleteProbeCycle => {
                 formatter.write_str("BUG! Probe cycle finished without running its full course")
             }
-            Error::DataFromOurselves => formatter.write_str(concat!(
+            Self::DataFromOurselves => formatter.write_str(concat!(
                 "Received data from something claiming to have ",
                 "an identity equal to our own"
             )),
-            Error::IndirectForOurselves => formatter.write_str(concat!(
+            Self::IndirectForOurselves => formatter.write_str(concat!(
                 "Received message that was supposed to reach us only ",
                 "via indirect means"
             )),
-            Error::MalformedPacket => formatter.write_str("Payload with more data than expected"),
-            Error::Encode(err) => err.fmt(formatter),
-            Error::Decode(err) => err.fmt(formatter),
-            Error::CustomBroadcast(err) => err.fmt(formatter),
-            Error::InvalidConfig => formatter.write_str("Invalid configuration"),
+            Self::MalformedPacket => formatter.write_str("Payload with more data than expected"),
+            Self::Encode(err) => err.fmt(formatter),
+            Self::Decode(err) => err.fmt(formatter),
+            Self::CustomBroadcast(err) => err.fmt(formatter),
+            Self::InvalidConfig => formatter.write_str("Invalid configuration"),
         }
     }
 }
