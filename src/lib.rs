@@ -1136,8 +1136,8 @@ where
         //            encoding/decoding members before we start probing
         debug_assert_eq!(self.connection_state, ConnectionState::Connected);
 
-        let mut probe_was_incomplete = false;
-        if !self.probe.validate() {
+        let probe_was_incomplete = !self.probe.validate();
+        if probe_was_incomplete {
             #[cfg(feature = "tracing")]
             tracing::trace!(
                 probed_id = tracing::field::debug(self.probe.target()),
@@ -1146,7 +1146,6 @@ where
             // Probe has invalid state. We'll reset and submit another timer
             // so that foca can recover from the issue gracefully
             self.probe.clear();
-            probe_was_incomplete = true;
         }
 
         if let Some(failed) = self.probe.take_failed() {
