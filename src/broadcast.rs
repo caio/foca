@@ -104,7 +104,6 @@ impl Invalidates for &[u8] {
     }
 }
 
-#[allow(dead_code)]
 pub(crate) struct Broadcasts<V> {
     flip: alloc::collections::BinaryHeap<Entry<V>>,
     flop: alloc::collections::BinaryHeap<Entry<V>>,

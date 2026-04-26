@@ -88,7 +88,7 @@ pub enum Error {
 impl PartialEq for Error {
     fn eq(&self, other: &Self) -> bool {
         use alloc::string::ToString;
-        #[allow(clippy::match_same_arms)]
+        #[expect(clippy::match_same_arms)]
         match (self, other) {
             // Wrapped errors have to allocate to compare :(
             // But PartialEq on an error type is mostly useful for tests
@@ -129,7 +129,7 @@ impl PartialEq for Error {
 
 impl fmt::Display for Error {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        #[allow(clippy::match_same_arms)]
+        #[expect(clippy::match_same_arms)]
         match self {
             Self::DataTooBig => {
                 formatter.write_str("Received data larger than maximum configured limit")

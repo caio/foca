@@ -731,10 +731,6 @@ where
                 Ok(())
             }
             Timer::RemoveDown(down) => {
-                #[cfg_attr(
-                    not(feature = "tracing"),
-                    allow(unused_variables, clippy::if_same_then_else)
-                )]
                 if let Some(_removed) = self.members.remove_if_down(&down) {
                     #[cfg(feature = "tracing")]
                     tracing::trace!(down = tracing::field::debug(&down), "Member removed");
@@ -1011,7 +1007,6 @@ where
                 self.send_message(src, Message::Ack(probe_number), runtime)?;
             }
             Message::Ack(probe_number) => {
-                #[cfg_attr(not(feature = "tracing"), allow(clippy::if_same_then_else))]
                 if self.probe.receive_ack(&src, probe_number) {
                     #[cfg(feature = "tracing")]
                     tracing::debug!(probed_id = tracing::field::debug(&src), "Probe success");
@@ -1173,7 +1168,7 @@ where
                 .apply_existing_if(as_suspect.clone(), |_member| true)
             {
                 let is_active_now = summary.is_active_now;
-                #[cfg_attr(not(feature = "tracing"), allow(unused_variables))]
+                #[cfg_attr(not(feature = "tracing"), expect(unused_variables))]
                 let apply_successful = summary.apply_successful;
                 self.handle_apply_summary(summary, as_suspect, true, &mut runtime)?;
 
@@ -1522,7 +1517,7 @@ where
         if add_custom_broadcast {
             // Fill the remaining space in the buffer with custom
             // broadcasts, if any
-            #[cfg_attr(not(feature = "tracing"), allow(unused_variables))]
+            #[cfg_attr(not(feature = "tracing"), expect(unused_variables))]
             let num_broadcasts = self
                 .custom_broadcasts
                 .fill_with_len_prefix(&mut buf, usize::MAX);
