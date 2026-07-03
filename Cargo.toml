@@ -45,6 +45,10 @@ required-features = ["std"]
 name = "foca_insecure_udp_agent"
 required-features = ["std", "tracing", "bincode-codec"]
 
+[[example]]
+name = "bootstrap_with_wellknown"
+required-features = ["std", "bincode-codec"]
+
 [dev-dependencies]
 clap = { version = "2", default-features = false }
 tokio = { version = "1", default-features = false, features = ["rt", "macros", "sync", "time", "net"] }
