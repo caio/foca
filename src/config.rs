@@ -196,7 +196,7 @@ impl Config {
     /// This is Foca in its simplest form and has no extensions enabled.
     /// Use this config if you are trying to get a grasp of how SWIM
     /// works, without any additional behavior.
-    pub fn simple() -> Self {
+    pub const fn simple() -> Self {
         Self {
             probe_period: Duration::from_millis(1500),
             probe_rtt: Duration::from_millis(500),

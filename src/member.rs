@@ -5,8 +5,8 @@ extern crate alloc;
 use alloc::vec::Vec;
 
 use rand::{
-    prelude::{IteratorRandom, SliceRandom},
     Rng,
+    prelude::{IteratorRandom, SliceRandom},
 };
 
 /// State describes how a Foca instance perceives a member of the cluster.
@@ -100,7 +100,7 @@ impl<T> Member<T> {
         }
     }
 
-    pub(crate) fn change_state(&mut self, incarnation: Incarnation, state: State) -> bool {
+    pub(crate) const fn change_state(&mut self, incarnation: Incarnation, state: State) -> bool {
         if self.can_change(incarnation, state) {
             self.state = state;
             self.incarnation = incarnation;
@@ -411,7 +411,7 @@ mod tests {
     use super::*;
 
     use alloc::vec;
-    use rand::{rngs::SmallRng, SeedableRng};
+    use rand::{SeedableRng, rngs::SmallRng};
 
     #[derive(Clone, Debug, PartialEq, Eq, Copy, PartialOrd, Ord)]
     struct Id(&'static str);
@@ -454,7 +454,7 @@ mod tests {
         assert!(
             !member.change_state(member.incarnation, Alive),
             "cannot transition to same state and incarnation {:?}",
-            &member
+            member
         );
 
         // Alive => Suspect
@@ -513,7 +513,7 @@ mod tests {
         assert!(
             !member.change_state(member.incarnation, Suspect),
             "cannot transition to same state and incarnation {:?}",
-            &member
+            member
         );
 
         // Suspect => Alive

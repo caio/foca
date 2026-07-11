@@ -1747,7 +1747,7 @@ mod tests {
     };
 
     use bytes::{Buf, BufMut, Bytes};
-    use rand::{rngs::SmallRng, SeedableRng};
+    use rand::{SeedableRng, rngs::SmallRng};
 
     use crate::testing::{BadCodec, ID};
 
@@ -3492,7 +3492,7 @@ mod tests {
                     .0
                     .get(&decoded.key())
                     // If the version we know about is smaller
-                    .map_or(true, |&version| version < decoded.version());
+                    .is_none_or(|&version| version < decoded.version());
 
                 if is_new_information {
                     self.0.insert(decoded.key(), decoded.version());

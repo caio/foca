@@ -19,11 +19,11 @@ use tracing_subscriber::{
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use clap::{App, Arg};
-use rand::{rngs::StdRng, SeedableRng};
+use rand::{SeedableRng, rngs::StdRng};
 use tokio::{
     net::UdpSocket,
     sync::mpsc,
-    time::{sleep_until, Instant},
+    time::{Instant, sleep_until},
 };
 
 use foca::{BincodeCodec, Config, Foca, OwnedNotification, Timer};

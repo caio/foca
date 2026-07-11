@@ -11,7 +11,7 @@
 //
 // Notice that `apply_many` can also be used for a state sync protocal
 // (anti-entropy) and for restoring state after a restart
-use rand::{rngs::StdRng, SeedableRng};
+use rand::{SeedableRng, rngs::StdRng};
 use std::{net::SocketAddr, num::NonZeroUsize, str::FromStr, time::Duration};
 
 use foca::{BincodeCodec, Config, Foca, Identity, Member, State};
