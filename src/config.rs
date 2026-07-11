@@ -216,6 +216,24 @@ impl Config {
             periodic_gossip: None,
         }
     }
+
+    pub(crate) fn allow_replace(&self, other: &Self) -> Result<(), &'static str> {
+        if self.probe_period != other.probe_period {
+            Err("probe_period changed")
+        } else if self.probe_rtt != other.probe_rtt {
+            Err("probe_rtt changed")
+        } else if self.periodic_announce.is_none() && other.periodic_announce.is_some() {
+            Err("periodic_announce enabled")
+        } else if self.periodic_announce_to_down_members.is_none()
+            && other.periodic_announce_to_down_members.is_some()
+        {
+            Err("periodic_announce_to_down_members enabled")
+        } else if self.periodic_gossip.is_none() && other.periodic_gossip.is_some() {
+            Err("periodic_gossip enabled")
+        } else {
+            Ok(())
+        }
+    }
 }
 
 #[cfg(feature = "std")]
@@ -344,12 +362,11 @@ const DEFAULT_REMOVE_DOWN_AFTER: Duration = Duration::from_secs(60 * 60 * 24); /
 
 #[cfg(test)]
 mod tests {
+    use super::*;
 
     #[test]
     #[cfg(feature = "std")]
     fn suspicion_scales_slowly() {
-        use super::*;
-
         let probe_period = Duration::from_secs(1);
         let mult = 4.0;
 
@@ -367,5 +384,90 @@ mod tests {
             Duration::from_secs(8),
             Config::suspicion_duration(NonZeroU32::new(100).unwrap(), probe_period, mult)
         );
+    }
+
+    #[test]
+    fn cannot_change_probe_params() {
+        let simple = Config::simple();
+
+        let mut changed = simple.clone();
+        changed.probe_period += Duration::from_secs(1);
+        assert_eq!(Err("probe_period changed"), simple.allow_replace(&changed));
+
+        let mut changed = simple.clone();
+        changed.probe_rtt += Duration::from_secs(2);
+        assert_eq!(Err("probe_rtt changed"), simple.allow_replace(&changed));
+    }
+
+    #[test]
+    fn cannot_enable_periodic_params() {
+        let simple = Config::simple();
+        let periodic = Some(PeriodicParams {
+            frequency: Duration::from_secs(5),
+            num_members: NonZeroUsize::new(3).unwrap(),
+        });
+
+        // XXX copy-pasta with periodic_* replaced. macro-me-maybe
+
+        assert!(simple.periodic_announce.is_none());
+        let mut changed = simple.clone();
+        changed.periodic_announce = periodic.clone();
+        assert_eq!(
+            Err("periodic_announce enabled"),
+            simple.allow_replace(&changed)
+        );
+
+        assert!(simple.periodic_announce_to_down_members.is_none());
+        let mut changed = simple.clone();
+        changed.periodic_announce_to_down_members = periodic.clone();
+        assert_eq!(
+            Err("periodic_announce_to_down_members enabled"),
+            simple.allow_replace(&changed)
+        );
+
+        assert!(simple.periodic_gossip.is_none());
+        let mut changed = simple.clone();
+        changed.periodic_gossip = periodic.clone();
+        assert_eq!(
+            Err("periodic_gossip enabled"),
+            simple.allow_replace(&changed)
+        );
+    }
+
+    #[test]
+    fn can_change_and_disable_periodic_params() {
+        let base = {
+            let mut c = Config::simple();
+            let params = Some(PeriodicParams {
+                frequency: Duration::from_secs(5),
+                num_members: NonZeroUsize::new(3).unwrap(),
+            });
+            c.periodic_announce = params.clone();
+            c.periodic_announce_to_down_members = params.clone();
+            c.periodic_gossip = params;
+            c
+        };
+
+        let new_params = Some(PeriodicParams {
+            frequency: Duration::from_secs(11),
+            num_members: NonZeroUsize::new(5).unwrap(),
+        });
+
+        let mut changed = base.clone();
+
+        changed.periodic_announce = new_params.clone();
+        assert_eq!(Ok(()), base.allow_replace(&changed));
+        changed.periodic_announce = None;
+        assert_eq!(Ok(()), base.allow_replace(&changed));
+
+        changed.periodic_announce_to_down_members = new_params.clone();
+        assert_eq!(Ok(()), base.allow_replace(&changed));
+        changed.periodic_announce_to_down_members = None;
+        assert_eq!(Ok(()), base.allow_replace(&changed));
+
+        changed.periodic_gossip = new_params.clone();
+        assert_eq!(Ok(()), base.allow_replace(&changed));
+        changed.periodic_gossip = None;
+        assert_eq!(Ok(()), base.allow_replace(&changed));
     }
 }

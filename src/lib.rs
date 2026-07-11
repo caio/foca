@@ -836,13 +836,7 @@ where
     /// When an error occurs, every configuration parameter remains
     /// unchanged.
     pub fn set_config(&mut self, config: Config) -> Result<()> {
-        if self.config.probe_period != config.probe_period
-            || self.config.probe_rtt != config.probe_rtt
-            || (self.config.periodic_announce.is_none() && config.periodic_announce.is_some())
-            || (self.config.periodic_announce_to_down_members.is_none()
-                && config.periodic_announce_to_down_members.is_some())
-            || (self.config.periodic_gossip.is_none() && config.periodic_gossip.is_some())
-        {
+        if self.config.allow_replace(&config).is_err() {
             Err(Error::InvalidConfig)
         } else {
             #[cfg(feature = "tracing")]
@@ -1824,28 +1818,42 @@ mod tests {
     }
 
     #[test]
-    fn cant_change_config_probe_timers() {
-        let mut foca = Foca::new(ID::new(1), config(), rng(), codec());
+    fn disallowed_config_leads_to_error() {
+        // Logical tests moved into the `config` mod
+        // this stresses the runtime block when replacing and the ability
+        // to use it when creating
+        let base = config();
+        let mut foca = Foca::new(ID::new(1), base.clone(), rng(), codec());
 
-        let mut bad_config = config();
-        bad_config.probe_rtt += Duration::from_millis(1);
+        let disallowed_mutations = [
+            // Modified probe param
+            {
+                let mut c = base.clone();
+                c.probe_rtt += Duration::from_millis(1);
+                c
+            },
+            // Enabled perioc_gossip
+            {
+                let mut c = base.clone();
+                assert!(c.periodic_gossip.is_none());
+                c.periodic_gossip = Some(PeriodicParams {
+                    frequency: Duration::from_secs(5),
+                    num_members: NonZeroUsize::new(3).unwrap(),
+                });
+                c
+            },
+        ];
 
-        assert_eq!(
-            Err(Error::InvalidConfig),
-            foca.set_config(bad_config),
-            "must not be able to change probe_rtt"
-        );
-
-        let mut bad_config = config();
-        bad_config.probe_period -= Duration::from_secs(1);
-
-        assert_eq!(
-            Err(Error::InvalidConfig),
-            foca.set_config(bad_config),
-            "must not be able to change probe_period"
-        );
-
-        assert_eq!(Ok(()), foca.set_config(config()));
+        // XXX one lint says I should use `for_each` and the other
+        //     tells me to use `for` making the dianostic flip flop 🤡
+        #[expect(clippy::explicit_into_iter_loop)]
+        for bad in disallowed_mutations.into_iter() {
+            assert_eq!(
+                Err(Error::InvalidConfig),
+                foca.set_config(bad),
+                "must not be able to change probe_period"
+            );
+        }
     }
 
     #[test]
@@ -3889,75 +3897,6 @@ mod tests {
                 expect_message!(runtime, ID::new(5), Message::<ID>::Announce);
             },
         );
-    }
-
-    #[test]
-    fn periodic_announce_cannot_be_enabled_at_runtime() {
-        let mut c = config();
-        assert!(c.periodic_announce.is_none());
-
-        // A foca instance that's running without periodic announce
-        let mut foca = Foca::new(ID::new(1), c.clone(), rng(), codec());
-
-        c.periodic_announce = Some(config::PeriodicParams {
-            frequency: Duration::from_secs(5),
-            num_members: NonZeroUsize::new(1).unwrap(),
-        });
-
-        // Must not be able to enable it during runtime
-        assert_eq!(Err(Error::InvalidConfig), foca.set_config(c.clone()));
-
-        // However, a foca that starts with periodic announce enabled
-        let mut foca = Foca::new(ID::new(1), c, rng(), codec());
-
-        // Is able to turn it off
-        assert_eq!(Ok(()), foca.set_config(config()));
-    }
-
-    #[test]
-    fn periodic_announce_to_down_members_cannot_be_enabled_at_runtime() {
-        let mut c = config();
-        assert!(c.periodic_announce_to_down_members.is_none());
-
-        // A foca instance that's running without periodic announce
-        let mut foca = Foca::new(ID::new(1), c.clone(), rng(), codec());
-
-        c.periodic_announce_to_down_members = Some(config::PeriodicParams {
-            frequency: Duration::from_secs(5),
-            num_members: NonZeroUsize::new(1).unwrap(),
-        });
-
-        // Must not be able to enable it during runtime
-        assert_eq!(Err(Error::InvalidConfig), foca.set_config(c.clone()));
-
-        // However, a foca that starts with periodic announce enabled
-        let mut foca = Foca::new(ID::new(1), c, rng(), codec());
-
-        // Is able to turn it off
-        assert_eq!(Ok(()), foca.set_config(config()));
-    }
-
-    #[test]
-    fn periodic_gossip_cannot_be_enabled_at_runtime() {
-        let mut c = config();
-        assert!(c.periodic_gossip.is_none());
-
-        // A foca instance that's running without periodic gossip
-        let mut foca = Foca::new(ID::new(1), c.clone(), rng(), codec());
-
-        c.periodic_gossip = Some(config::PeriodicParams {
-            frequency: Duration::from_secs(5),
-            num_members: NonZeroUsize::new(1).unwrap(),
-        });
-
-        // Must not be able to enable it during runtime
-        assert_eq!(Err(Error::InvalidConfig), foca.set_config(c.clone()));
-
-        // However, a foca that starts with periodic gossip enabled
-        let mut foca = Foca::new(ID::new(1), c, rng(), codec());
-
-        // Is able to turn it off
-        assert_eq!(Ok(()), foca.set_config(config()));
     }
 
     #[test]
