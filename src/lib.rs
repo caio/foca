@@ -124,7 +124,7 @@ extern crate std;
 use core::{cmp::Ordering, convert::TryFrom, fmt, iter::ExactSizeIterator, mem};
 
 use bytes::{Buf, BufMut};
-use rand::Rng;
+use rand::RngExt;
 
 mod broadcast;
 mod codec;
@@ -208,7 +208,7 @@ where
     T: Identity,
     C: Codec<T>,
     C::Error: core::error::Error + Send,
-    RNG: Rng,
+    RNG: RngExt,
 {
     /// Create a new Foca instance with custom broadcasts disabled.
     ///
@@ -240,7 +240,7 @@ where
     T: Identity,
     C: Codec<T>,
     C::Error: core::error::Error,
-    RNG: Rng,
+    RNG: RngExt,
     B: BroadcastHandler<T>,
     B::Error: core::error::Error + 'static,
 {
@@ -1711,7 +1711,7 @@ where
     T: Identity,
     C: Codec<T>,
     C::Error: core::error::Error,
-    RNG: rand::Rng,
+    RNG: rand::RngExt,
     B: BroadcastHandler<T>,
     B::Error: core::error::Error + Send,
 {
