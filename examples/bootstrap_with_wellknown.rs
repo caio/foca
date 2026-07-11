@@ -35,7 +35,7 @@ fn main() {
             num_members: NonZeroUsize::new(3).unwrap(),
         }),
         // Never forget a member
-        remove_down_after: Duration::MAX,
+        remove_down_after: None,
         ..Config::simple()
     };
 

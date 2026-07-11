@@ -289,7 +289,7 @@ where
     /// Whatever is controlling the running Foca will then have to wait
     /// for at least [`Config::remove_down_after`] before attempting a
     /// rejoin. Then you can call this method followed by a
-    /// [`Foca::announce(T)`] to go back to the cluster.
+    /// [`Foca::announce`] to go back to the cluster.
     pub fn reuse_down_identity(&mut self) -> Result<()> {
         if self.connection_state != ConnectionState::Undead {
             Err(Error::NotUndead)
@@ -1269,8 +1269,10 @@ where
 
             // Down is a terminal state, so set up a handler for removing
             // the member so that it may rejoin later
-            if !summary.is_active_now {
-                runtime.submit_after(Timer::RemoveDown(id.clone()), self.config.remove_down_after);
+            if !summary.is_active_now
+                && let Some(delay) = self.config.remove_down_after
+            {
+                runtime.submit_after(Timer::RemoveDown(id.clone()), delay);
             }
         }
 
@@ -2155,7 +2157,7 @@ mod tests {
         expect_scheduling!(
             runtime,
             Timer::RemoveDown(ID::new(5)),
-            config.remove_down_after
+            config.remove_down_after.unwrap()
         );
 
         // 2 active members from the updates + the member the sent
@@ -2262,7 +2264,7 @@ mod tests {
         expect_scheduling!(
             runtime,
             Timer::RemoveDown(ID::new(2)),
-            config().remove_down_after
+            config().remove_down_after.unwrap()
         );
 
         // We already know about ID::new(2) being down. So we don't
@@ -2287,7 +2289,7 @@ mod tests {
         expect_scheduling!(
             runtime,
             Timer::RemoveDown(ID::new(3)),
-            config().remove_down_after
+            config().remove_down_after.unwrap()
         );
 
         Ok(())

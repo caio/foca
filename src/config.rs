@@ -80,8 +80,16 @@ pub struct Config {
     /// Governs how long Foca will remember an identity as being
     /// Down.
     ///
-    /// It's recommended to have very high values here, in the order
-    /// of hours or longer.
+    /// It's recommended to use `None` or using a high value here,
+    /// in the order of hours or longer.
+    ///
+    /// Setting this to `None` here means that Foca will never forget
+    /// about an _Addr_ (see [`crate::Identity`]) it's seen before.
+    ///
+    /// In the past the `Identity` trait didn't have the `Addr` concept
+    /// which made rejoins/restarts increase memory proportional to the
+    /// number of members the rejoined. Now a rejoin doesn't cause memory
+    /// growth so never removing a down member is feasible.
     ///
     /// Identities that opt-in on auto-rejoining don't need to worry
     /// about this value being high: this setting only prevents nodes
@@ -96,7 +104,7 @@ pub struct Config {
     /// value.
     ///
     /// See [`crate::Identity::renew`].
-    pub remove_down_after: Duration,
+    pub remove_down_after: Option<Duration>,
 
     /// The maximum packet size Foca will produce AND consume.
     ///
@@ -358,7 +366,7 @@ impl Config {
     }
 }
 
-const DEFAULT_REMOVE_DOWN_AFTER: Duration = Duration::from_secs(60 * 60 * 24); // 24h
+const DEFAULT_REMOVE_DOWN_AFTER: Option<Duration> = Some(Duration::from_secs(60 * 60 * 24)); // 24h
 
 #[cfg(test)]
 mod tests {
