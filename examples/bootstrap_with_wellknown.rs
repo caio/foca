@@ -14,7 +14,7 @@
 use rand::rngs::StdRng;
 use std::{net::SocketAddr, num::NonZeroUsize, str::FromStr, time::Duration};
 
-use foca::{BincodeCodec, Config, Foca, Identity, Member, State};
+use foca::{BincodeCodec, Config, Foca, Identity, Member};
 
 #[derive(Clone, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 struct ID {
@@ -54,7 +54,7 @@ fn main() {
             .iter()
             .copied()
             .map(ID::wellknown)
-            .map(|id| Member::new(id, 0, State::Down)),
+            .map(Member::down),
         false,
         &mut runtime,
     )

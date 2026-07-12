@@ -74,7 +74,8 @@ impl<T> Member<T> {
         Self::new(id, Incarnation::default(), State::Suspect)
     }
 
-    pub(crate) fn down(id: T) -> Self {
+    /// Shortcut for initializing a member as [`State::Down`].
+    pub fn down(id: T) -> Self {
         Self::new(id, Incarnation::default(), State::Down)
     }
 
