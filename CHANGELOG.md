@@ -1,5 +1,12 @@
 # Changelog
 
+## UNRELEASED
+
+- **BREAKING**: Minimum Supported Rust Version (msrv) is now 1.88.0
+- **BREAKING**: `rand` dependency updated to 0.10
+- **BREAKING**: Config `remove_down_after` is now an `Option`
+- `Member::down` exposed to facilitate teaching Foca about (maybe)down identities
+
 ## v1.0.0 - 2025-12-03
 
 - Foca errors are now Send+Sync
