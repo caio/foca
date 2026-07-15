@@ -774,36 +774,29 @@ where
             }
             Timer::PeriodicGossip(token) => {
                 // Exact same thing as PeriodicAnnounce, just using different settings / messages
-                if token == self.timer_token && self.connection_state == ConnectionState::Connected
+                if token == self.timer_token
+                    && self.connection_state == ConnectionState::Connected
+                    && let Some(ref params) = self.config.periodic_gossip
                 {
-                    if let Some(ref params) = self.config.periodic_gossip {
-                        runtime.submit_after(
-                            Timer::PeriodicGossip(self.timer_token),
-                            params.frequency,
-                        );
+                    runtime.submit_after(Timer::PeriodicGossip(self.timer_token), params.frequency);
 
-                        // Only actually gossip if there are updates to send
-                        if !self.updates.is_empty() || !self.custom_broadcasts.is_empty() {
-                            self.choose_and_send(
-                                params.num_members.get(),
-                                Message::Gossip,
-                                runtime,
-                            )?;
-                        }
+                    // Only actually gossip if there are updates to send
+                    if !self.updates.is_empty() || !self.custom_broadcasts.is_empty() {
+                        self.choose_and_send(params.num_members.get(), Message::Gossip, runtime)?;
                     }
                 }
                 Ok(())
             }
             Timer::PeriodicAnnounceDown(token) => {
-                if token == self.timer_token && self.connection_state == ConnectionState::Connected
+                if token == self.timer_token
+                    && self.connection_state == ConnectionState::Connected
+                    && let Some(ref params) = self.config.periodic_announce_to_down_members
                 {
-                    if let Some(ref params) = self.config.periodic_announce_to_down_members {
-                        runtime.submit_after(
-                            Timer::PeriodicAnnounceDown(self.timer_token),
-                            params.frequency,
-                        );
-                        self.announce_to_down(params.num_members.get(), runtime)?;
-                    }
+                    runtime.submit_after(
+                        Timer::PeriodicAnnounceDown(self.timer_token),
+                        params.frequency,
+                    );
+                    self.announce_to_down(params.num_members.get(), runtime)?;
                 }
                 Ok(())
             }
