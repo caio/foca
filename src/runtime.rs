@@ -256,6 +256,9 @@ pub enum Timer<T> {
 
     /// Forgets about dead member `T`, allowing them to join the
     /// cluster again with the same identity.
+    ///
+    /// This event will never be emitted if [`crate::Config::remove_down_after`]
+    /// is set to `None`.
     RemoveDown(T),
 }
 

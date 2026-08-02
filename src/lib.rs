@@ -21,8 +21,8 @@
 //!     implement [`Identity`] and enjoy.
 //!
 //!   * Write your own wire format by implementing [`Codec`]; Like
-//!     serde? There is `bincode-codec` and `postcard-codec` features,
-//!     or just use the `serde` feature and pick your favorite format.
+//!     serde? There is the `postcard-codec` feature; Or you can
+//!     just use the `serde` feature and pick your favorite format.
 //!
 //!   * Use any transport you want, it's up to you how messages
 //!     reach each member: Foca will tell you "Send these bytes to
@@ -124,7 +124,7 @@ extern crate std;
 use core::{cmp::Ordering, convert::TryFrom, fmt, iter::ExactSizeIterator, mem};
 
 use bytes::{Buf, BufMut};
-use rand::Rng;
+use rand::RngExt;
 
 mod broadcast;
 mod codec;
@@ -157,9 +157,6 @@ pub use crate::{
 
 #[cfg(feature = "postcard-codec")]
 pub use crate::codec::postcard_impl::PostcardCodec;
-
-#[cfg(feature = "bincode-codec")]
-pub use crate::codec::bincode_impl::BincodeCodec;
 
 type Result<T> = core::result::Result<T, Error>;
 
@@ -208,7 +205,7 @@ where
     T: Identity,
     C: Codec<T>,
     C::Error: core::error::Error + Send,
-    RNG: Rng,
+    RNG: RngExt,
 {
     /// Create a new Foca instance with custom broadcasts disabled.
     ///
@@ -240,7 +237,7 @@ where
     T: Identity,
     C: Codec<T>,
     C::Error: core::error::Error,
-    RNG: Rng,
+    RNG: RngExt,
     B: BroadcastHandler<T>,
     B::Error: core::error::Error + 'static,
 {
@@ -289,7 +286,7 @@ where
     /// Whatever is controlling the running Foca will then have to wait
     /// for at least [`Config::remove_down_after`] before attempting a
     /// rejoin. Then you can call this method followed by a
-    /// [`Foca::announce(T)`] to go back to the cluster.
+    /// [`Foca::announce`] to go back to the cluster.
     pub fn reuse_down_identity(&mut self) -> Result<()> {
         if self.connection_state != ConnectionState::Undead {
             Err(Error::NotUndead)
@@ -774,36 +771,29 @@ where
             }
             Timer::PeriodicGossip(token) => {
                 // Exact same thing as PeriodicAnnounce, just using different settings / messages
-                if token == self.timer_token && self.connection_state == ConnectionState::Connected
+                if token == self.timer_token
+                    && self.connection_state == ConnectionState::Connected
+                    && let Some(ref params) = self.config.periodic_gossip
                 {
-                    if let Some(ref params) = self.config.periodic_gossip {
-                        runtime.submit_after(
-                            Timer::PeriodicGossip(self.timer_token),
-                            params.frequency,
-                        );
+                    runtime.submit_after(Timer::PeriodicGossip(self.timer_token), params.frequency);
 
-                        // Only actually gossip if there are updates to send
-                        if !self.updates.is_empty() || !self.custom_broadcasts.is_empty() {
-                            self.choose_and_send(
-                                params.num_members.get(),
-                                Message::Gossip,
-                                runtime,
-                            )?;
-                        }
+                    // Only actually gossip if there are updates to send
+                    if !self.updates.is_empty() || !self.custom_broadcasts.is_empty() {
+                        self.choose_and_send(params.num_members.get(), Message::Gossip, runtime)?;
                     }
                 }
                 Ok(())
             }
             Timer::PeriodicAnnounceDown(token) => {
-                if token == self.timer_token && self.connection_state == ConnectionState::Connected
+                if token == self.timer_token
+                    && self.connection_state == ConnectionState::Connected
+                    && let Some(ref params) = self.config.periodic_announce_to_down_members
                 {
-                    if let Some(ref params) = self.config.periodic_announce_to_down_members {
-                        runtime.submit_after(
-                            Timer::PeriodicAnnounceDown(self.timer_token),
-                            params.frequency,
-                        );
-                        self.announce_to_down(params.num_members.get(), runtime)?;
-                    }
+                    runtime.submit_after(
+                        Timer::PeriodicAnnounceDown(self.timer_token),
+                        params.frequency,
+                    );
+                    self.announce_to_down(params.num_members.get(), runtime)?;
                 }
                 Ok(())
             }
@@ -843,13 +833,7 @@ where
     /// When an error occurs, every configuration parameter remains
     /// unchanged.
     pub fn set_config(&mut self, config: Config) -> Result<()> {
-        if self.config.probe_period != config.probe_period
-            || self.config.probe_rtt != config.probe_rtt
-            || (self.config.periodic_announce.is_none() && config.periodic_announce.is_some())
-            || (self.config.periodic_announce_to_down_members.is_none()
-                && config.periodic_announce_to_down_members.is_some())
-            || (self.config.periodic_gossip.is_none() && config.periodic_gossip.is_some())
-        {
+        if self.config.allow_replace(&config).is_err() {
             Err(Error::InvalidConfig)
         } else {
             #[cfg(feature = "tracing")]
@@ -1282,8 +1266,10 @@ where
 
             // Down is a terminal state, so set up a handler for removing
             // the member so that it may rejoin later
-            if !summary.is_active_now {
-                runtime.submit_after(Timer::RemoveDown(id.clone()), self.config.remove_down_after);
+            if !summary.is_active_now
+                && let Some(delay) = self.config.remove_down_after
+            {
+                runtime.submit_after(Timer::RemoveDown(id.clone()), delay);
             }
         }
 
@@ -1718,7 +1704,7 @@ where
     T: Identity,
     C: Codec<T>,
     C::Error: core::error::Error,
-    RNG: rand::Rng,
+    RNG: rand::RngExt,
     B: BroadcastHandler<T>,
     B::Error: core::error::Error + Send,
 {
@@ -1754,7 +1740,7 @@ mod tests {
     };
 
     use bytes::{Buf, BufMut, Bytes};
-    use rand::{rngs::SmallRng, SeedableRng};
+    use rand::{SeedableRng, rngs::SmallRng};
 
     use crate::testing::{BadCodec, ID};
 
@@ -1831,28 +1817,42 @@ mod tests {
     }
 
     #[test]
-    fn cant_change_config_probe_timers() {
-        let mut foca = Foca::new(ID::new(1), config(), rng(), codec());
+    fn disallowed_config_leads_to_error() {
+        // Logical tests moved into the `config` mod
+        // this stresses the runtime block when replacing and the ability
+        // to use it when creating
+        let base = config();
+        let mut foca = Foca::new(ID::new(1), base.clone(), rng(), codec());
 
-        let mut bad_config = config();
-        bad_config.probe_rtt += Duration::from_millis(1);
+        let disallowed_mutations = [
+            // Modified probe param
+            {
+                let mut c = base.clone();
+                c.probe_rtt += Duration::from_millis(1);
+                c
+            },
+            // Enabled perioc_gossip
+            {
+                let mut c = base.clone();
+                assert!(c.periodic_gossip.is_none());
+                c.periodic_gossip = Some(PeriodicParams {
+                    frequency: Duration::from_secs(5),
+                    num_members: NonZeroUsize::new(3).unwrap(),
+                });
+                c
+            },
+        ];
 
-        assert_eq!(
-            Err(Error::InvalidConfig),
-            foca.set_config(bad_config),
-            "must not be able to change probe_rtt"
-        );
-
-        let mut bad_config = config();
-        bad_config.probe_period -= Duration::from_secs(1);
-
-        assert_eq!(
-            Err(Error::InvalidConfig),
-            foca.set_config(bad_config),
-            "must not be able to change probe_period"
-        );
-
-        assert_eq!(Ok(()), foca.set_config(config()));
+        // XXX one lint says I should use `for_each` and the other
+        //     tells me to use `for` making the dianostic flip flop 🤡
+        #[expect(clippy::explicit_into_iter_loop)]
+        for bad in disallowed_mutations.into_iter() {
+            assert_eq!(
+                Err(Error::InvalidConfig),
+                foca.set_config(bad),
+                "must not be able to change probe_period"
+            );
+        }
     }
 
     #[test]
@@ -2154,7 +2154,7 @@ mod tests {
         expect_scheduling!(
             runtime,
             Timer::RemoveDown(ID::new(5)),
-            config.remove_down_after
+            config.remove_down_after.unwrap()
         );
 
         // 2 active members from the updates + the member the sent
@@ -2261,7 +2261,7 @@ mod tests {
         expect_scheduling!(
             runtime,
             Timer::RemoveDown(ID::new(2)),
-            config().remove_down_after
+            config().remove_down_after.unwrap()
         );
 
         // We already know about ID::new(2) being down. So we don't
@@ -2286,7 +2286,7 @@ mod tests {
         expect_scheduling!(
             runtime,
             Timer::RemoveDown(ID::new(3)),
-            config().remove_down_after
+            config().remove_down_after.unwrap()
         );
 
         Ok(())
@@ -3499,7 +3499,7 @@ mod tests {
                     .0
                     .get(&decoded.key())
                     // If the version we know about is smaller
-                    .map_or(true, |&version| version < decoded.version());
+                    .is_none_or(|&version| version < decoded.version());
 
                 if is_new_information {
                     self.0.insert(decoded.key(), decoded.version());
@@ -3896,75 +3896,6 @@ mod tests {
                 expect_message!(runtime, ID::new(5), Message::<ID>::Announce);
             },
         );
-    }
-
-    #[test]
-    fn periodic_announce_cannot_be_enabled_at_runtime() {
-        let mut c = config();
-        assert!(c.periodic_announce.is_none());
-
-        // A foca instance that's running without periodic announce
-        let mut foca = Foca::new(ID::new(1), c.clone(), rng(), codec());
-
-        c.periodic_announce = Some(config::PeriodicParams {
-            frequency: Duration::from_secs(5),
-            num_members: NonZeroUsize::new(1).unwrap(),
-        });
-
-        // Must not be able to enable it during runtime
-        assert_eq!(Err(Error::InvalidConfig), foca.set_config(c.clone()));
-
-        // However, a foca that starts with periodic announce enabled
-        let mut foca = Foca::new(ID::new(1), c, rng(), codec());
-
-        // Is able to turn it off
-        assert_eq!(Ok(()), foca.set_config(config()));
-    }
-
-    #[test]
-    fn periodic_announce_to_down_members_cannot_be_enabled_at_runtime() {
-        let mut c = config();
-        assert!(c.periodic_announce_to_down_members.is_none());
-
-        // A foca instance that's running without periodic announce
-        let mut foca = Foca::new(ID::new(1), c.clone(), rng(), codec());
-
-        c.periodic_announce_to_down_members = Some(config::PeriodicParams {
-            frequency: Duration::from_secs(5),
-            num_members: NonZeroUsize::new(1).unwrap(),
-        });
-
-        // Must not be able to enable it during runtime
-        assert_eq!(Err(Error::InvalidConfig), foca.set_config(c.clone()));
-
-        // However, a foca that starts with periodic announce enabled
-        let mut foca = Foca::new(ID::new(1), c, rng(), codec());
-
-        // Is able to turn it off
-        assert_eq!(Ok(()), foca.set_config(config()));
-    }
-
-    #[test]
-    fn periodic_gossip_cannot_be_enabled_at_runtime() {
-        let mut c = config();
-        assert!(c.periodic_gossip.is_none());
-
-        // A foca instance that's running without periodic gossip
-        let mut foca = Foca::new(ID::new(1), c.clone(), rng(), codec());
-
-        c.periodic_gossip = Some(config::PeriodicParams {
-            frequency: Duration::from_secs(5),
-            num_members: NonZeroUsize::new(1).unwrap(),
-        });
-
-        // Must not be able to enable it during runtime
-        assert_eq!(Err(Error::InvalidConfig), foca.set_config(c.clone()));
-
-        // However, a foca that starts with periodic gossip enabled
-        let mut foca = Foca::new(ID::new(1), c, rng(), codec());
-
-        // Is able to turn it off
-        assert_eq!(Ok(()), foca.set_config(config()));
     }
 
     #[test]

@@ -1,9 +1,9 @@
 [package]
 name = "foca"
 version = "1.0.0"
-rust-version = "1.81.0"
+rust-version = "1.88.0"
 authors = ["Caio <contact@caio.co>"]
-edition = "2021"
+edition = "2024"
 license = "MPL-2.0"
 description = "Gossip-based cluster membership discovery, based on SWIM"
 keywords = ["swim", "gossip", "service-discovery", "memberlist"]
@@ -21,20 +21,17 @@ default = []
 
 # Adds compatibility with some types and traits
 std = []
-# Exposes `BincodeCodec` a lean general-purpose std-only codec
-bincode-codec = ["std", "serde", "bincode", "bytes/std"]
 # Exposes `PostcardCodec`, a no_std-friendly codec
 postcard-codec = ["serde", "postcard"]
 # Enables experimental message-related notifications
 unstable-notifications = []
 
 [dependencies]
-rand = { version = "0.9", default-features = false }
+rand = { version = "0.10", default-features = false }
 bytes = { version = "1", default-features = false }
 
 serde = { version = "1", default-features = false, features = ["derive", "alloc"], optional = true }
-bincode = { version = "2", default-features = false, features = ["std", "serde"], optional = true }
-postcard = { version = "1.0", default-features = false, optional = true }
+postcard = { version = "1", default-features = false, optional = true }
 tracing = { version = "0.1", default-features = false, features = ["attributes"], optional = true }
 
 [[example]]
@@ -43,16 +40,16 @@ required-features = ["std"]
 
 [[example]]
 name = "foca_insecure_udp_agent"
-required-features = ["std", "tracing", "bincode-codec"]
+required-features = ["tracing", "postcard-codec"]
 
 [[example]]
 name = "bootstrap_with_wellknown"
-required-features = ["std", "bincode-codec"]
+required-features = ["postcard-codec"]
 
 [dev-dependencies]
 clap = { version = "2", default-features = false }
 tokio = { version = "1", default-features = false, features = ["rt", "macros", "sync", "time", "net"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1", features = ["v4", "serde"] }
-rand = { version = "0.9", features = ["small_rng"] }
+rand = { version = "0.10", features = ["std_rng"] }
 serde = { version = "1", features = ["derive"] }

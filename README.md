@@ -39,7 +39,7 @@ showcases how a simple tokio-based agent could look like and lets
 you actually run and see Foca swimming.
 
 ~~~
-$ cargo run --features std,tracing,bincode-codec --example foca_insecure_udp_agent -- --help
+$ cargo run --features std,tracing,postcard-codec --example foca_insecure_udp_agent -- --help
 foca_insecure_udp_agent 
 
 USAGE:
@@ -82,8 +82,6 @@ Every feature is optional. The `default` set will always be empty.
   be exposed with the `TRACE` level. No other levels are emitted.
 * `serde`: Derives `Serialize` and `Deserialize` for Foca's public
   types.
-* `bincode-codec`: Provides `BincodeCodec`, a serde-based codec type
-  that uses [bincode][] under the hood.
 * `postcard-codec`: Provides `PostcardCodec` a serde-based, `no_std`
   friendly codec that uses [postcard][] under the hood.
 * `unstable-notifications`: Provides new notifications that allow
@@ -132,7 +130,6 @@ Protocol][1]
 
 [1]: https://www.cs.cornell.edu/projects/Quicksilver/public_pdfs/SWIM.pdf
 [2]: https://github.com/hashicorp/memberlist
-[bincode]: https://github.com/bincode-org/bincode
 [postcard]: https://github.com/jamesmunns/postcard
 [tracing]: https://docs.rs/tracing/latest/tracing/
 [dir]: https://docs.rs/tracing-subscriber/0.3.17/tracing_subscriber/filter/struct.EnvFilter.html#directives

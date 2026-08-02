@@ -11,10 +11,10 @@
 //
 // Notice that `apply_many` can also be used for a state sync protocal
 // (anti-entropy) and for restoring state after a restart
-use rand::{rngs::StdRng, SeedableRng};
+use rand::rngs::StdRng;
 use std::{net::SocketAddr, num::NonZeroUsize, str::FromStr, time::Duration};
 
-use foca::{BincodeCodec, Config, Foca, Identity, Member, State};
+use foca::{Config, Foca, Identity, Member, PostcardCodec};
 
 #[derive(Clone, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 struct ID {
@@ -35,25 +35,21 @@ fn main() {
             num_members: NonZeroUsize::new(3).unwrap(),
         }),
         // Never forget a member
-        remove_down_after: Duration::MAX,
+        remove_down_after: None,
         ..Config::simple()
     };
 
     let ourselves = ID::new(SocketAddr::from_str("192.168.0.200:8080").unwrap(), 1);
     let mut runtime = foca::AccumulatingRuntime::new();
-    let mut foca = Foca::new(
-        ourselves,
-        config,
-        StdRng::from_os_rng(),
-        BincodeCodec(bincode::config::standard()),
-    );
+    let rng: StdRng = rand::make_rng();
+    let mut foca = Foca::new(ourselves, config, rng, PostcardCodec);
 
     foca.apply_many(
         wellknown
             .iter()
             .copied()
             .map(ID::wellknown)
-            .map(|id| Member::new(id, 0, State::Down)),
+            .map(Member::down),
         false,
         &mut runtime,
     )

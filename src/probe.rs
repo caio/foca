@@ -4,7 +4,7 @@
 extern crate alloc;
 use alloc::vec::Vec;
 
-use crate::{member::Member, ProbeNumber};
+use crate::{ProbeNumber, member::Member};
 
 pub(crate) struct Probe<T> {
     direct: Option<Member<T>>,
@@ -50,7 +50,7 @@ impl<T: Clone + PartialEq> Probe<T> {
         // do NOT reset probe_number
     }
 
-    pub(crate) fn mark_indirect_probe_stage_reached(&mut self) {
+    pub(crate) const fn mark_indirect_probe_stage_reached(&mut self) {
         self.reached_indirect_probe_stage = true;
     }
 
@@ -63,7 +63,7 @@ impl<T: Clone + PartialEq> Probe<T> {
             || self.reached_indirect_probe_stage
     }
 
-    pub(crate) fn take_failed(&mut self) -> Option<Member<T>> {
+    pub(crate) const fn take_failed(&mut self) -> Option<Member<T>> {
         if !self.succeeded() {
             self.direct.take()
         } else {
@@ -99,10 +99,11 @@ impl<T: Clone + PartialEq> Probe<T> {
     }
 
     pub(crate) fn expect_indirect_ack(&mut self, from: T) {
-        debug_assert!(self
-            .direct
-            .as_ref()
-            .is_some_and(|probed| probed.id() != &from));
+        debug_assert!(
+            self.direct
+                .as_ref()
+                .is_some_and(|probed| probed.id() != &from)
+        );
         self.indirect.push(from);
     }
 

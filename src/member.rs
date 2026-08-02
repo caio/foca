@@ -5,8 +5,8 @@ extern crate alloc;
 use alloc::vec::Vec;
 
 use rand::{
+    RngExt,
     prelude::{IteratorRandom, SliceRandom},
-    Rng,
 };
 
 /// State describes how a Foca instance perceives a member of the cluster.
@@ -74,7 +74,8 @@ impl<T> Member<T> {
         Self::new(id, Incarnation::default(), State::Suspect)
     }
 
-    pub(crate) fn down(id: T) -> Self {
+    /// Shortcut for initializing a member as [`State::Down`].
+    pub fn down(id: T) -> Self {
         Self::new(id, Incarnation::default(), State::Down)
     }
 
@@ -100,7 +101,7 @@ impl<T> Member<T> {
         }
     }
 
-    pub(crate) fn change_state(&mut self, incarnation: Incarnation, state: State) -> bool {
+    pub(crate) const fn change_state(&mut self, incarnation: Incarnation, state: State) -> bool {
         if self.can_change(incarnation, state) {
             self.state = state;
             self.incarnation = incarnation;
@@ -168,7 +169,7 @@ where
 
     // Next member that's considered active
     // Chosen at random (shuffle + round-robin)
-    pub(crate) fn next(&mut self, mut rng: impl Rng) -> Option<&Member<T>> {
+    pub(crate) fn next(&mut self, mut rng: impl RngExt) -> Option<&Member<T>> {
         // Round-robin with a shuffle at the end
         if self.cursor >= self.inner.len() {
             self.inner.shuffle(&mut rng);
@@ -213,7 +214,7 @@ where
         &self,
         wanted: usize,
         output: &mut Vec<Member<T>>,
-        mut rng: impl Rng,
+        mut rng: impl RngExt,
         picker: F,
     ) where
         F: Fn(&Member<T>) -> bool,
@@ -244,7 +245,7 @@ where
         &self,
         wanted: usize,
         output: &mut Vec<Member<T>>,
-        rng: impl Rng,
+        rng: impl RngExt,
     ) {
         self.choose_members(wanted, output, rng, |member| !member.is_active());
     }
@@ -253,7 +254,7 @@ where
         &self,
         wanted: usize,
         output: &mut Vec<Member<T>>,
-        rng: impl Rng,
+        rng: impl RngExt,
         picker: F,
     ) where
         F: Fn(&T) -> bool,
@@ -355,7 +356,7 @@ where
         }
     }
 
-    pub(crate) fn apply(&mut self, update: Member<T>, mut rng: impl Rng) -> ApplySummary<T> {
+    pub(crate) fn apply(&mut self, update: Member<T>, mut rng: impl RngExt) -> ApplySummary<T> {
         self.apply_existing_if(update.clone(), |_member| true)
             .unwrap_or_else(|| {
                 // Unknown member, we'll register it
@@ -411,7 +412,7 @@ mod tests {
     use super::*;
 
     use alloc::vec;
-    use rand::{rngs::SmallRng, SeedableRng};
+    use rand::{SeedableRng, rngs::SmallRng};
 
     #[derive(Clone, Debug, PartialEq, Eq, Copy, PartialOrd, Ord)]
     struct Id(&'static str);
@@ -454,7 +455,7 @@ mod tests {
         assert!(
             !member.change_state(member.incarnation, Alive),
             "cannot transition to same state and incarnation {:?}",
-            &member
+            member
         );
 
         // Alive => Suspect
@@ -513,7 +514,7 @@ mod tests {
         assert!(
             !member.change_state(member.incarnation, Suspect),
             "cannot transition to same state and incarnation {:?}",
-            &member
+            member
         );
 
         // Suspect => Alive

@@ -7,9 +7,6 @@ use bytes::{Buf, BufMut};
 
 use crate::{Header, Member};
 
-#[cfg(feature = "bincode-codec")]
-pub(crate) mod bincode_impl;
-
 #[cfg(feature = "postcard-codec")]
 pub(crate) mod postcard_impl;
 
