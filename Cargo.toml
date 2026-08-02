@@ -1,6 +1,6 @@
 [package]
 name = "foca"
-version = "1.0.0"
+version = "2.0.0"
 rust-version = "1.88.0"
 authors = ["Caio <contact@caio.co>"]
 edition = "2024"

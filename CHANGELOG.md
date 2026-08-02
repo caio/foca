@@ -1,6 +1,6 @@
 # Changelog
 
-## UNRELEASED
+## v2.0.0 - 2026-08-02
 
 - **BREAKING**: Minimum Supported Rust Version (msrv) is now 1.88.0
 - **BREAKING**: `rand` dependency updated to 0.10
