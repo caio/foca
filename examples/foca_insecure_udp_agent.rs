@@ -17,7 +17,7 @@ use tracing_subscriber::{
     prelude::*,
 };
 
-use bytes::{Buf, BufMut, Bytes, BytesMut};
+use bytes::{BufMut, Bytes, BytesMut};
 use clap::{App, Arg};
 use rand::rngs::StdRng;
 use tokio::{
@@ -26,7 +26,7 @@ use tokio::{
     time::{Instant, sleep_until},
 };
 
-use foca::{BincodeCodec, Config, Foca, OwnedNotification, Timer};
+use foca::{Config, Foca, OwnedNotification, PostcardCodec, Timer};
 
 #[derive(Debug)]
 struct CliParams {
@@ -217,13 +217,8 @@ async fn main() -> Result<(), Box<dyn core::error::Error>> {
     let buf_len = config.max_packet_size.get();
     let mut recv_buf = vec![0u8; buf_len];
 
-    let mut foca = Foca::with_custom_broadcast(
-        identity,
-        config,
-        rng,
-        BincodeCodec(bincode::config::standard()),
-        Handler::new(),
-    );
+    let mut foca =
+        Foca::with_custom_broadcast(identity, config, rng, PostcardCodec, Handler::new());
     let socket = Arc::new(UdpSocket::bind(bind_addr).await?);
 
     // We'll create a task responsible to sending data through the
@@ -265,7 +260,7 @@ async fn main() -> Result<(), Box<dyn core::error::Error>> {
 
     let mut runtime = foca::AccumulatingRuntime::new();
     tokio::spawn(async move {
-        let mut ser_buf = Vec::new();
+        let mut ser_buf = vec![0u8; buf_len];
         let mut last_change_at = 0;
 
         while let Some(input) = rx_foca.recv().await {
@@ -286,13 +281,8 @@ async fn main() -> Result<(), Box<dyn core::error::Error>> {
                         addr: foca.identity().addr,
                         version: last_change_at,
                     };
-                    ser_buf.clear();
-                    bincode::serde::encode_into_std_write(
-                        Broadcast { key, msg },
-                        &mut ser_buf,
-                        bincode::config::standard(),
-                    )
-                    .expect("ser error handling");
+                    let data = postcard::to_slice(&Broadcast { key, msg }, &mut ser_buf)
+                        .expect("ser error handling");
 
                     // Notice that we're unconditionally adding a custom
                     // broadcast to the backlog, so there will always be some
@@ -301,7 +291,7 @@ async fn main() -> Result<(), Box<dyn core::error::Error>> {
                     // some heartbeat-like (service advertisement, node status)
                     // and some more message-like (leadership election, anti-
                     // entropy)
-                    foca.add_broadcast(&ser_buf).map(|_| ())
+                    foca.add_broadcast(data).map(|_| ())
                 }
             };
 
@@ -575,15 +565,12 @@ impl foca::BroadcastHandler<ID> for Handler {
         data: &[u8],
         _sender: Option<&ID>,
     ) -> Result<Option<Self::Key>, Self::Error> {
-        let mut reader = data.reader();
-
         // In this contrived example, we decode the whole broadcast
         // directly. Ideally, one would first decode just the key
         // so that you can quickly verify if there's a need to
         // decode the rest of the payload.
         let Broadcast { key, msg }: Broadcast =
-            bincode::serde::decode_from_std_read(&mut reader, bincode::config::standard())
-                .map_err(|err| Msg(format!("bad broadcast: {err}")))?;
+            postcard::from_bytes(data).map_err(|err| Msg(format!("bad broadcast: {err}")))?;
 
         let is_new_message = self
             .messages

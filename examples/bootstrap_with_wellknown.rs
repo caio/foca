@@ -14,7 +14,7 @@
 use rand::rngs::StdRng;
 use std::{net::SocketAddr, num::NonZeroUsize, str::FromStr, time::Duration};
 
-use foca::{BincodeCodec, Config, Foca, Identity, Member};
+use foca::{Config, Foca, Identity, Member, PostcardCodec};
 
 #[derive(Clone, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 struct ID {
@@ -42,12 +42,7 @@ fn main() {
     let ourselves = ID::new(SocketAddr::from_str("192.168.0.200:8080").unwrap(), 1);
     let mut runtime = foca::AccumulatingRuntime::new();
     let rng: StdRng = rand::make_rng();
-    let mut foca = Foca::new(
-        ourselves,
-        config,
-        rng,
-        BincodeCodec(bincode::config::standard()),
-    );
+    let mut foca = Foca::new(ourselves, config, rng, PostcardCodec);
 
     foca.apply_many(
         wellknown

@@ -21,8 +21,8 @@
 //!     implement [`Identity`] and enjoy.
 //!
 //!   * Write your own wire format by implementing [`Codec`]; Like
-//!     serde? There is `bincode-codec` and `postcard-codec` features,
-//!     or just use the `serde` feature and pick your favorite format.
+//!     serde? There is the `postcard-codec` feature; Or you can
+//!     just use the `serde` feature and pick your favorite format.
 //!
 //!   * Use any transport you want, it's up to you how messages
 //!     reach each member: Foca will tell you "Send these bytes to
@@ -157,9 +157,6 @@ pub use crate::{
 
 #[cfg(feature = "postcard-codec")]
 pub use crate::codec::postcard_impl::PostcardCodec;
-
-#[cfg(feature = "bincode-codec")]
-pub use crate::codec::bincode_impl::BincodeCodec;
 
 type Result<T> = core::result::Result<T, Error>;
 

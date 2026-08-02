@@ -358,11 +358,11 @@ impl Codec<ID> for BadCodec {
     }
 }
 
-#[cfg(any(feature = "bincode-codec", feature = "postcard-codec"))]
+#[cfg(feature = "postcard-codec")]
 #[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct TrivialID(u64);
 
-#[cfg(any(feature = "bincode-codec", feature = "postcard-codec"))]
+#[cfg(feature = "postcard-codec")]
 pub(crate) fn verify_codec_roundtrip<C: Codec<TrivialID>>(mut codec: C) -> Result<(), C::Error> {
     let mut buf = Vec::new();
 
